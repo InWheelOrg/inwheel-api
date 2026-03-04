@@ -58,7 +58,7 @@ type Geometry struct {
 // Place is the identity layer model, representing a physical location.
 type Place struct {
 	// ID is the unique internal identifier.
-	ID string `json:"id"`
+	ID string `json:"id" gorm:"primaryKey;type:uuid;default:gen_random_uuid()"`
 	// OSMID is the original OpenStreetMap ID.
 	OSMID int64 `json:"osm_id"`
 	// OSMType is the original OpenStreetMap data type.
@@ -69,10 +69,8 @@ type Place struct {
 	Lng float64 `json:"lng"`
 	// Lat is the latitude of the place.
 	Lat float64 `json:"lat"`
-	// Lng is the longitude of the place.
-	Lng float64 `json:"lng"`
 	// Geometry contains the spatial representation of the place.
-	Geometry *Geometry `json:"geometry,omitzero"`
+	Geometry *Geometry `json:"geometry,omitzero" gorm:"type:jsonb"`
 	// Category is the classification of the place.
 	Category Category `json:"category"`
 	// Rank is the zoom-level priority of the place.
@@ -80,9 +78,9 @@ type Place struct {
 	// ParentID is the identifier of the containing place (e.g., a shop's mall).
 	ParentID *string `json:"parent_id,omitzero"`
 	// Accessibility contains the accessibility profile of the place.
-	Accessibility *AccessibilityProfile `json:"accessibility,omitzero"`
-	// Tags contains additional key-value data from the source.
-	Tags map[string]string `json:"tags,omitzero"`
+	Accessibility *AccessibilityProfile `json:"accessibility,omitzero" gorm:"type:jsonb"`
+	// Tags contain additional key-value data from the source.
+	Tags map[string]string `json:"tags,omitzero" gorm:"type:jsonb"`
 	// Source indicates where the data originated (e.g., "osm").
 	Source string `json:"source"`
 	// CreatedAt is the timestamp when the place was created.
