@@ -22,17 +22,24 @@ func (s *Service) ComputeEffectiveProfile(child, parent *models.Place) *models.A
 		return nil
 	}
 
-	var effective *models.AccessibilityProfile
+	childCount := 0
 	if child.Accessibility != nil {
-		effective = &models.AccessibilityProfile{
-			OverallStatus: child.Accessibility.OverallStatus,
-			Components:    slices.Clone(child.Accessibility.Components),
-		}
-	} else {
-		effective = &models.AccessibilityProfile{
-			OverallStatus: models.StatusUnknown,
-			Components:    nil,
-		}
+		childCount = len(child.Accessibility.Components)
+	}
+
+	parentCount := 0
+	if parent != nil && parent.Accessibility != nil {
+		parentCount = len(parent.Accessibility.Components)
+	}
+
+	effective := &models.AccessibilityProfile{
+		OverallStatus: models.StatusUnknown,
+		Components:    make([]models.A11yComponent, 0, childCount+parentCount),
+	}
+
+	if child.Accessibility != nil {
+		effective.OverallStatus = child.Accessibility.OverallStatus
+		effective.Components = append(effective.Components, child.Accessibility.Components...)
 	}
 
 	if parent == nil || parent.Accessibility == nil {
