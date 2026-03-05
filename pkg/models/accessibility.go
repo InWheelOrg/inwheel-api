@@ -25,6 +25,20 @@ type AccessibilityProfile struct {
 	OverallStatus A11yStatus `json:"overall_status"`
 	// Components are the individual accessibility features (entrance, etc).
 	Components []A11yComponent `json:"components,omitzero"`
+	// Audit contains the findings of the automated accessibility audit.
+	Audit *AuditResult `json:"audit,omitzero"`
+}
+
+// AuditResult contains the findings of the automated accessibility audit.
+type AuditResult struct {
+	// HasConflict is true if the AI detected logical contradictions.
+	HasConflict bool `json:"has_conflict"`
+	// Reasoning explains why a conflict was flagged (e.g., "Accessible but has steps").
+	Reasoning string `json:"reasoning"`
+	// Confidence is the AI's certainty score (0.0 to 1.0).
+	Confidence float64 `json:"confidence"`
+	// LastAudit is the ISO8601 timestamp of the last audit pass.
+	LastAudit string `json:"last_audit"`
 }
 
 // A11yComponentType identifies the kind of accessibility feature.
@@ -46,6 +60,8 @@ type A11yComponent struct {
 	IsInherited bool `json:"is_inherited"`
 	// SourceID is the ID of the Place that owns this specific data.
 	SourceID string `json:"source_id"`
+	// OverallStatus is the summary rating of this specific component.
+	OverallStatus A11yStatus `json:"overall_status"`
 	// Entrance contains properties for an entrance component.
 	Entrance *EntranceProperties `json:"entrance,omitzero"`
 	// Restroom contains properties for a restroom component.

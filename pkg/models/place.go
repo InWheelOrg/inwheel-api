@@ -83,6 +83,8 @@ type Place struct {
 	Tags map[string]string `json:"tags,omitzero" gorm:"type:jsonb"`
 	// Source indicates where the data originated (e.g., "osm").
 	Source string `json:"source"`
+	// NeedsAudit is an internal flag used to queue the place for an accessibility audit.
+	NeedsAudit bool `json:"-" gorm:"index"`
 	// CreatedAt is the timestamp when the place was created.
 	CreatedAt time.Time `json:"created_at"`
 	// UpdatedAt is the timestamp when the place was last updated.
