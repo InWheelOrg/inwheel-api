@@ -17,12 +17,14 @@ import (
 
 // Config holds the database connection configuration.
 type Config struct {
-	Host     string
-	Port     int
-	User     string
-	Password string
-	Name     string
-	SSLMode  string
+	Host         string
+	Port         int
+	User         string
+	Password     string
+	Name         string
+	SSLMode      string
+	MaxOpenConns int
+	MaxIdleConns int
 }
 
 // Connect initializes the database connection.
@@ -39,8 +41,18 @@ func Connect(cfg Config) (*gorm.DB, error) {
 	if err != nil {
 		return nil, fmt.Errorf("could not get generic db: %w", err)
 	}
-	sqlDB.SetMaxIdleConns(10)
-	sqlDB.SetMaxOpenConns(100)
+
+	maxOpen := cfg.MaxOpenConns
+	if maxOpen == 0 {
+		maxOpen = 25
+	}
+	maxIdle := cfg.MaxIdleConns
+	if maxIdle == 0 {
+		maxIdle = 5
+	}
+
+	sqlDB.SetMaxIdleConns(maxIdle)
+	sqlDB.SetMaxOpenConns(maxOpen)
 	sqlDB.SetConnMaxLifetime(time.Hour)
 
 	return db, nil

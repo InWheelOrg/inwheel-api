@@ -61,9 +61,13 @@ func (a *Auditor) Start(ctx context.Context) {
 
 // ProcessNextTask claims one pending task and processes it.
 func (a *Auditor) ProcessNextTask(ctx context.Context) (bool, error) {
+	// Add a 3-minute timeout for the entire task processing, including the LLM request.
+	// This should be longer than the HTTP client timeout (2m) to allow for some overhead.
+	ctx, cancel := context.WithTimeout(ctx, 3*time.Minute)
+	defer cancel()
+
 	var profile models.AccessibilityProfile
 
-	// Atomic Claim using FOR UPDATE SKIP LOCKED
 	err := a.db.Transaction(func(tx *gorm.DB) error {
 		claimSQL := `
 			UPDATE accessibility_profiles 
