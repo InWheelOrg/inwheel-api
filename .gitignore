@@ -1,4 +1,6 @@
 .vscode/
 .idea/
 .claude/
+.postman/
+postman/
 .env
