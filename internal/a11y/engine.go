@@ -11,13 +11,13 @@ import (
 	"github.com/InWheelOrg/inwheel-server/pkg/models"
 )
 
-// Service provides logic for accessibility data processing and inheritance.
-type Service struct{}
+// Engine provides logic for accessibility data processing and inheritance.
+type Engine struct{}
 
 // ComputeEffectiveProfile merges accessibility components from a child place and its parent.
 // Child places inherit parent components they don't own (e.g., a shop inherits a mall's parking).
 // For any component taken from the parent, IsInherited is set to true and SourceID is set to parent.ID.
-func (s *Service) ComputeEffectiveProfile(child, parent *models.Place) *models.AccessibilityProfile {
+func (s *Engine) ComputeEffectiveProfile(child, parent *models.Place) *models.AccessibilityProfile {
 	if child == nil {
 		return nil
 	}

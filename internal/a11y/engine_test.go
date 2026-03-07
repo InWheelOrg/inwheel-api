@@ -12,7 +12,7 @@ import (
 )
 
 func TestComputeEffectiveProfile(t *testing.T) {
-	svc := &Service{}
+	engine := &Engine{}
 
 	tests := []struct {
 		name          string
@@ -136,7 +136,7 @@ func TestComputeEffectiveProfile(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			res := svc.ComputeEffectiveProfile(tt.child, tt.parent)
+			res := engine.ComputeEffectiveProfile(tt.child, tt.parent)
 
 			if tt.child == nil {
 				if res != nil {
