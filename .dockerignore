@@ -1,0 +1,10 @@
+.git
+.vscode
+.idea
+.env
+.postman
+.claude
+**/*_test.go
+bin/
+docs/
+postman/
