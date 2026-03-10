@@ -1,6 +1,7 @@
 services:
   db:
     image: postgis/postgis:18-3.6
+    platform: linux/amd64
     environment:
       - POSTGRES_USER=${DB_USER}
       - POSTGRES_PASSWORD=${DB_PASSWORD}
@@ -8,7 +9,7 @@ services:
     ports:
       - "5432:5432"
     volumes:
-      - postgres_data:/var/lib/postgresql/data
+      - postgres_data:/var/lib/postgresql
     healthcheck:
       test: [ "CMD-SHELL", "pg_isready -U ${DB_USER} -d ${DB_NAME}" ]
       interval: 10s
@@ -50,8 +51,8 @@ services:
       - DB_USER=${DB_USER}
       - DB_PASSWORD=${DB_PASSWORD}
       - DB_NAME=${DB_NAME}
-      - OLLAMA_URL=http://ollama:11434
-      - AUDIT_MODEL=deepseek-r1:1.5b
+      - OLLAMA_URL=${OLLAMA_URL:-http://ollama:11434}
+      - AUDIT_MODEL=${AUDIT_MODEL:-deepseek-r1:1.5b}
     depends_on:
       db:
         condition: service_healthy
