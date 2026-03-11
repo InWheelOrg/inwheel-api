@@ -12,6 +12,7 @@ import (
 	"log/slog"
 	"time"
 
+	"github.com/InWheelOrg/inwheel-server/internal/a11y"
 	"github.com/InWheelOrg/inwheel-server/pkg/models"
 	"github.com/ollama/ollama/api"
 	"gorm.io/gorm"
@@ -22,6 +23,7 @@ type Auditor struct {
 	db     *gorm.DB
 	ollama *api.Client
 	model  string
+	engine *a11y.Engine
 }
 
 // NewAuditor creates a new Auditor service.
@@ -30,6 +32,7 @@ func NewAuditor(db *gorm.DB, ollama *api.Client, model string) *Auditor {
 		db:     db,
 		ollama: ollama,
 		model:  model,
+		engine: &a11y.Engine{},
 	}
 }
 
@@ -133,20 +136,34 @@ func (a *Auditor) ProcessNextTask(ctx context.Context) (bool, error) {
 	return true, nil
 }
 
+// auditWithLLM runs the audit using the LLM.
 func (a *Auditor) auditWithLLM(ctx context.Context, profile *models.AccessibilityProfile) (*models.AuditResult, error) {
-	prompt := `You are an Accessibility Auditor. Your goal is to detect contradictions in a nested JSON structure.
+	a.engine.WithAuditFlags(profile)
 
-Rules for Components:
-- Check each 'A11yComponent'. If its technical properties (e.g., 'entrance.step_height' > 0.05) 
-  contradict its 'overall_status' (e.g., 'accessible'), FLAG CONFLICT.
-- For 'restroom', if 'wheelchair_accessible' is false but 'overall_status' is 'accessible', FLAG CONFLICT.
+	prompt := `You are an Accessibility Auditor specializing in logical consistency. 
+Your task is to identify contradictions between the technical properties of a place and its stated accessibility status.
 
-Rules for the Profile:
-- Compare the 'overall_status' of the entire profile against the 'overall_status' of its components.
-- If a critical component (like 'entrance') is 'inaccessible', the profile's 'overall_status' 
-  cannot be 'accessible'.
+### DATA STRUCTURE REFERENCE:
+- Profile: { "overall_status": "accessible" | "limited" | "inaccessible" | "unknown", "components": [...] }
+- Component: { "type": "...", "overall_status": "...", "audit_flags": ["narrow width", "contains step", ...] }
 
-Respond ONLY in JSON: {"has_conflict": bool, "reasoning": "string", "confidence": float}.`
+### AUDIT RULES:
+
+1. STATUS VS FLAGS (CRITICAL):
+   - IF a component has 'audit_flags', THEN its 'overall_status' SHOULD NOT be "accessible".
+   - IF the 'overall_status' is "accessible" despite 'audit_flags' being present, FLAG CONFLICT.
+
+2. LOGICAL CONSISTENCY (Profile vs. Component):
+   - IF any component (especially 'entrance') has 'overall_status' = "inaccessible", THEN the Profile's 'overall_status' MUST NOT be "accessible".
+   - FLAG CONFLICT if a component is more restrictive than the Profile's overall status.
+
+### OUTPUT FORMAT:
+Respond ONLY with a JSON object:
+{
+  "has_conflict": bool,
+  "reasoning": "A very simple, human-friendly explanation of the conflict. Avoid technical terms or jargon like 'technical limit' or 'audit flags'.",
+  "confidence": float (0.0 to 1.0)
+}`
 
 	profileJSON, err := json.Marshal(profile)
 	if err != nil {

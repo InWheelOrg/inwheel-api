@@ -68,3 +68,66 @@ func hasComponent(place *models.Place, cType models.A11yComponentType) bool {
 		return c.Type == cType
 	})
 }
+
+// WithAuditFlags performs a technical validation of each component and populates the AuditFlags field.
+func (s *Engine) WithAuditFlags(profile *models.AccessibilityProfile) {
+	if profile == nil {
+		return
+	}
+
+	for i := range profile.Components {
+		comp := &profile.Components[i]
+		comp.AuditFlags = nil // Reset
+
+		switch comp.Type {
+		case models.ComponentEntrance:
+			if e := comp.Entrance; e != nil {
+				if e.Width != nil && *e.Width < 0.8 {
+					comp.AuditFlags = append(comp.AuditFlags, "narrow width (0.8m required)")
+				}
+				if e.HasStep != nil && *e.HasStep {
+					comp.AuditFlags = append(comp.AuditFlags, "contains step")
+					if e.StepHeight != nil && *e.StepHeight > 0.05 {
+						comp.AuditFlags = append(comp.AuditFlags, "high step (>0.05m)")
+					}
+					if e.HasRamp != nil && !*e.HasRamp {
+						comp.AuditFlags = append(comp.AuditFlags, "step with no ramp")
+					}
+				}
+			}
+		case models.ComponentRestroom:
+			if r := comp.Restroom; r != nil {
+				if r.WheelchairAccessible != nil && !*r.WheelchairAccessible {
+					comp.AuditFlags = append(comp.AuditFlags, "not wheelchair accessible")
+				}
+				if r.DoorWidth != nil && *r.DoorWidth < 0.8 {
+					comp.AuditFlags = append(comp.AuditFlags, "narrow door (0.8m required)")
+				}
+				if r.GrabRails != nil && !*r.GrabRails {
+					comp.AuditFlags = append(comp.AuditFlags, "missing grab rails")
+				}
+			}
+		case models.ComponentElevator:
+			if el := comp.Elevator; el != nil {
+				if el.Width != nil && *el.Width < 0.8 {
+					comp.AuditFlags = append(comp.AuditFlags, "small cabin width (0.8m required)")
+				}
+				if el.Depth != nil && *el.Depth < 1.1 {
+					comp.AuditFlags = append(comp.AuditFlags, "small cabin depth (1.1m required)")
+				}
+				if el.Braille != nil && !*el.Braille {
+					comp.AuditFlags = append(comp.AuditFlags, "missing braille")
+				}
+				if el.Audio != nil && !*el.Audio {
+					comp.AuditFlags = append(comp.AuditFlags, "missing audio")
+				}
+			}
+		case models.ComponentParking:
+			if p := comp.Parking; p != nil {
+				if p.HasDisabledSpaces != nil && !*p.HasDisabledSpaces {
+					comp.AuditFlags = append(comp.AuditFlags, "no disabled spaces")
+				}
+			}
+		}
+	}
+}

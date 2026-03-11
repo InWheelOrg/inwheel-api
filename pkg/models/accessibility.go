@@ -84,6 +84,8 @@ type A11yComponent struct {
 	SourceID string `json:"source_id"`
 	// OverallStatus is the summary rating of this specific component.
 	OverallStatus A11yStatus `json:"overall_status"`
+	// AuditFlags contains technical violations detected.
+	AuditFlags []string `json:"audit_flags,omitzero"`
 	// Entrance contains properties for an entrance component.
 	Entrance *EntranceProperties `json:"entrance,omitzero"`
 	// Restroom contains properties for a restroom component.
