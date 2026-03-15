@@ -13,6 +13,7 @@ import (
 	"time"
 
 	internaldb "github.com/InWheelOrg/inwheel-server/internal/db"
+	"github.com/docker/go-connections/nat"
 	"github.com/testcontainers/testcontainers-go"
 	tcpostgres "github.com/testcontainers/testcontainers-go/modules/postgres"
 	"github.com/testcontainers/testcontainers-go/wait"
@@ -27,7 +28,9 @@ func StartPostgres(ctx context.Context) (*gorm.DB, func(), error) {
 		tcpostgres.WithUsername("test"),
 		tcpostgres.WithPassword("test"),
 		testcontainers.WithWaitStrategy(
-			wait.ForListeningPort("5432/tcp").WithStartupTimeout(2*time.Minute),
+			wait.ForSQL("5432/tcp", "pgx", func(host string, port nat.Port) string {
+				return fmt.Sprintf("host=%s port=%s user=test password=test dbname=inwheel_test sslmode=disable", host, port.Port())
+			}).WithStartupTimeout(2*time.Minute),
 		),
 	)
 	if err != nil {
