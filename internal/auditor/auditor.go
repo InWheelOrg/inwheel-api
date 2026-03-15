@@ -18,21 +18,33 @@ import (
 	"gorm.io/gorm"
 )
 
-// Auditor handles the background accessibility audit tasks.
-type Auditor struct {
-	db     *gorm.DB
-	ollama *api.Client
+// llmAuditor is the interface for running an accessibility audit against a language model.
+type llmAuditor interface {
+	audit(ctx context.Context, profile *models.AccessibilityProfile) (*models.AuditResult, error)
+}
+
+// ollamaAuditor is the production implementation of llmAuditor backed by a local Ollama instance.
+type ollamaAuditor struct {
+	client *api.Client
 	model  string
 	engine *a11y.Engine
+}
+
+// Auditor handles the background accessibility audit tasks.
+type Auditor struct {
+	db  *gorm.DB
+	llm llmAuditor
 }
 
 // NewAuditor creates a new Auditor service.
 func NewAuditor(db *gorm.DB, ollama *api.Client, model string) *Auditor {
 	return &Auditor{
-		db:     db,
-		ollama: ollama,
-		model:  model,
-		engine: &a11y.Engine{},
+		db: db,
+		llm: &ollamaAuditor{
+			client: ollama,
+			model:  model,
+			engine: &a11y.Engine{},
+		},
 	}
 }
 
@@ -101,7 +113,7 @@ func (a *Auditor) ProcessNextTask(ctx context.Context) (bool, error) {
 
 	slog.Info("Processing audit task", "profile_id", profile.ID)
 
-	result, err := a.auditWithLLM(ctx, &profile)
+	result, err := a.llm.audit(ctx, &profile)
 	if err != nil {
 		slog.Error("LLM audit failed", "profile_id", profile.ID, "error", err)
 		// Unlock on failure so it can be retried later
@@ -136,9 +148,9 @@ func (a *Auditor) ProcessNextTask(ctx context.Context) (bool, error) {
 	return true, nil
 }
 
-// auditWithLLM runs the audit using the LLM.
-func (a *Auditor) auditWithLLM(ctx context.Context, profile *models.AccessibilityProfile) (*models.AuditResult, error) {
-	a.engine.WithAuditFlags(profile)
+// audit runs the accessibility audit against the Ollama LLM.
+func (o *ollamaAuditor) audit(ctx context.Context, profile *models.AccessibilityProfile) (*models.AuditResult, error) {
+	o.engine.WithAuditFlags(profile)
 
 	prompt := `You are an Accessibility Auditor specializing in logical consistency. 
 Your task is to identify contradictions between the technical properties of a place and its stated accessibility status.
@@ -173,7 +185,7 @@ Respond ONLY with a JSON object:
 	slog.Debug("Sending profile to LLM", "profile_id", profile.ID, "json_body", string(profileJSON))
 
 	req := &api.GenerateRequest{
-		Model:  a.model,
+		Model:  o.model,
 		Prompt: fmt.Sprintf("%s\n\nInput Profile: %s", prompt, string(profileJSON)),
 		Format: json.RawMessage(`"json"`),
 		Options: map[string]any{
@@ -189,7 +201,7 @@ Respond ONLY with a JSON object:
 		Confidence  float64 `json:"confidence"`
 	}
 
-	err = a.ollama.Generate(ctx, req, func(resp api.GenerateResponse) error {
+	err = o.client.Generate(ctx, req, func(resp api.GenerateResponse) error {
 		return json.Unmarshal([]byte(resp.Response), &auditResponse)
 	})
 	if err != nil {
