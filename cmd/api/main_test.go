@@ -6,6 +6,7 @@
 package main
 
 import (
+	"bytes"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -232,5 +233,45 @@ func TestGetEnv(t *testing.T) {
 				t.Errorf("getEnv() = %q, want %q", got, tt.want)
 			}
 		})
+	}
+}
+
+func TestHandlePostPlace_InvalidJSON(t *testing.T) {
+	r := httptest.NewRequest(http.MethodPost, "/places", bytes.NewBufferString("{bad json"))
+	w := httptest.NewRecorder()
+	(&Server{}).handlePostPlace(w, r)
+
+	if w.Code != http.StatusBadRequest {
+		t.Errorf("status = %d, want 400", w.Code)
+	}
+}
+
+func TestHandlePatchAccessibility_InvalidJSON(t *testing.T) {
+	r := httptest.NewRequest(http.MethodPatch, "/places/some-id/accessibility", bytes.NewBufferString("{bad json"))
+	w := httptest.NewRecorder()
+	(&Server{}).handlePatchAccessibility(w, r)
+
+	if w.Code != http.StatusBadRequest {
+		t.Errorf("status = %d, want 400", w.Code)
+	}
+}
+
+func TestHandleGetPlaces_InvalidProximityCoord(t *testing.T) {
+	r := httptest.NewRequest(http.MethodGet, "/places?lng=not-a-number&lat=52.5&radius=500", nil)
+	w := httptest.NewRecorder()
+	(&Server{}).handleGetPlaces(w, r)
+
+	if w.Code != http.StatusBadRequest {
+		t.Errorf("status = %d, want 400", w.Code)
+	}
+}
+
+func TestHandleGetPlaces_InvalidBoundingBoxCoord(t *testing.T) {
+	r := httptest.NewRequest(http.MethodGet, "/places?min_lng=bad&min_lat=52.0&max_lng=14.0&max_lat=53.0", nil)
+	w := httptest.NewRecorder()
+	(&Server{}).handleGetPlaces(w, r)
+
+	if w.Code != http.StatusBadRequest {
+		t.Errorf("status = %d, want 400", w.Code)
 	}
 }

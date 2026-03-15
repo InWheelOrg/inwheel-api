@@ -139,6 +139,53 @@ func TestHandlePatchAccessibility_CreatePath(t *testing.T) {
 	}
 }
 
+func TestHandleGetPlace_ReturnsPlaceWithAccessibility(t *testing.T) {
+	t.Cleanup(func() { truncate(t) })
+
+	place := models.Place{
+		Name:     "Test Cafe",
+		Lat:      52.5,
+		Lng:      13.4,
+		Category: models.CategoryCafe,
+		Source:   "test",
+		Accessibility: &models.AccessibilityProfile{
+			OverallStatus: models.StatusAccessible,
+		},
+	}
+	testDB.Create(&place)
+
+	r := httptest.NewRequest(http.MethodGet, "/places/"+place.ID, nil)
+	r.SetPathValue("id", place.ID)
+	w := httptest.NewRecorder()
+	(&Server{db: testDB}).handleGetPlace(w, r)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200; body: %s", w.Code, w.Body.String())
+	}
+
+	var got models.Place
+	if err := json.NewDecoder(w.Body).Decode(&got); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if got.Accessibility == nil {
+		t.Error("expected accessibility profile in response")
+	}
+}
+
+func TestHandleGetPlace_NotFound(t *testing.T) {
+	t.Cleanup(func() { truncate(t) })
+
+	const nonExistentID = "00000000-0000-0000-0000-000000000000"
+	r := httptest.NewRequest(http.MethodGet, "/places/"+nonExistentID, nil)
+	r.SetPathValue("id", nonExistentID)
+	w := httptest.NewRecorder()
+	(&Server{db: testDB}).handleGetPlace(w, r)
+
+	if w.Code != http.StatusNotFound {
+		t.Errorf("status = %d, want 404", w.Code)
+	}
+}
+
 func TestHandlePatchAccessibility_UpdateIncrementsVersion(t *testing.T) {
 	t.Cleanup(func() { truncate(t) })
 
