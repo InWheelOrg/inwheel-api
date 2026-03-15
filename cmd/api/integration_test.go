@@ -109,6 +109,22 @@ func TestHandlePostPlace_WithoutAccessibility(t *testing.T) {
 	}
 }
 
+func TestHandlePatchAccessibility_PlaceNotFound(t *testing.T) {
+	t.Cleanup(func() { truncate(t) })
+
+	const nonExistentID = "00000000-0000-0000-0000-000000000000"
+	body, _ := json.Marshal(models.AccessibilityProfile{OverallStatus: models.StatusAccessible})
+
+	r := httptest.NewRequest(http.MethodPatch, "/places/"+nonExistentID+"/accessibility", bytes.NewReader(body))
+	r.SetPathValue("id", nonExistentID)
+	w := httptest.NewRecorder()
+	(&Server{db: testDB}).handlePatchAccessibility(w, r)
+
+	if w.Code != http.StatusNotFound {
+		t.Errorf("status = %d, want 404; body: %s", w.Code, w.Body.String())
+	}
+}
+
 func TestHandlePatchAccessibility_CreatePath(t *testing.T) {
 	t.Cleanup(func() { truncate(t) })
 

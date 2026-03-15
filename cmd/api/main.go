@@ -198,18 +198,21 @@ func (s *Server) handlePatchAccessibility(w http.ResponseWriter, r *http.Request
 		err := tx.Where("place_id = ?", id).First(&profile).Error
 
 		if err != nil {
-			if errors.Is(err, gorm.ErrRecordNotFound) {
-				input.PlaceID = id
-				input.NeedsAudit = true
-				input.DataVersion = 1
-				input.UpdatedAt = time.Now()
-				if err := tx.Create(&input).Error; err != nil {
-					return err
-				}
-				result = input
-				return nil
+			if !errors.Is(err, gorm.ErrRecordNotFound) {
+				return err
 			}
-			return err
+			if err := tx.First(&models.Place{}, "id = ?", id).Error; err != nil {
+				return err // ErrRecordNotFound propagates as-is 404, other errors 500
+			}
+			input.PlaceID = id
+			input.NeedsAudit = true
+			input.DataVersion = 1
+			input.UpdatedAt = time.Now()
+			if err := tx.Create(&input).Error; err != nil {
+				return err
+			}
+			result = input
+			return nil
 		}
 
 		updates := map[string]any{
@@ -228,6 +231,10 @@ func (s *Server) handlePatchAccessibility(w http.ResponseWriter, r *http.Request
 	})
 
 	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			http.Error(w, "Place not found", http.StatusNotFound)
+			return
+		}
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
