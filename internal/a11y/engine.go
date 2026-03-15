@@ -11,6 +11,25 @@ import (
 	"github.com/InWheelOrg/inwheel-server/pkg/models"
 )
 
+// Audit flag constants for each technical violation detected by WithAuditFlags.
+const (
+	FlagEntranceNarrowWidth  = "narrow width (0.8m required)"
+	FlagEntranceContainsStep = "contains step"
+	FlagEntranceHighStep     = "high step (>0.05m)"
+	FlagEntranceStepNoRamp   = "step with no ramp"
+
+	FlagRestroomNotAccessible = "not wheelchair accessible"
+	FlagRestroomNarrowDoor    = "narrow door (0.8m required)"
+	FlagRestroomNoGrabRails   = "missing grab rails"
+
+	FlagElevatorNarrowWidth = "small cabin width (0.8m required)"
+	FlagElevatorShallowDep  = "small cabin depth (1.1m required)"
+	FlagElevatorNoBraille   = "missing braille"
+	FlagElevatorNoAudio     = "missing audio"
+
+	FlagParkingNoDisabledSpaces = "no disabled spaces"
+)
+
 // Engine provides logic for accessibility data processing and inheritance.
 type Engine struct{}
 
@@ -83,49 +102,49 @@ func (s *Engine) WithAuditFlags(profile *models.AccessibilityProfile) {
 		case models.ComponentEntrance:
 			if e := comp.Entrance; e != nil {
 				if e.Width != nil && *e.Width < 0.8 {
-					comp.AuditFlags = append(comp.AuditFlags, "narrow width (0.8m required)")
+					comp.AuditFlags = append(comp.AuditFlags, FlagEntranceNarrowWidth)
 				}
 				if e.HasStep != nil && *e.HasStep {
-					comp.AuditFlags = append(comp.AuditFlags, "contains step")
+					comp.AuditFlags = append(comp.AuditFlags, FlagEntranceContainsStep)
 					if e.StepHeight != nil && *e.StepHeight > 0.05 {
-						comp.AuditFlags = append(comp.AuditFlags, "high step (>0.05m)")
+						comp.AuditFlags = append(comp.AuditFlags, FlagEntranceHighStep)
 					}
 					if e.HasRamp != nil && !*e.HasRamp {
-						comp.AuditFlags = append(comp.AuditFlags, "step with no ramp")
+						comp.AuditFlags = append(comp.AuditFlags, FlagEntranceStepNoRamp)
 					}
 				}
 			}
 		case models.ComponentRestroom:
 			if r := comp.Restroom; r != nil {
 				if r.WheelchairAccessible != nil && !*r.WheelchairAccessible {
-					comp.AuditFlags = append(comp.AuditFlags, "not wheelchair accessible")
+					comp.AuditFlags = append(comp.AuditFlags, FlagRestroomNotAccessible)
 				}
 				if r.DoorWidth != nil && *r.DoorWidth < 0.8 {
-					comp.AuditFlags = append(comp.AuditFlags, "narrow door (0.8m required)")
+					comp.AuditFlags = append(comp.AuditFlags, FlagRestroomNarrowDoor)
 				}
 				if r.GrabRails != nil && !*r.GrabRails {
-					comp.AuditFlags = append(comp.AuditFlags, "missing grab rails")
+					comp.AuditFlags = append(comp.AuditFlags, FlagRestroomNoGrabRails)
 				}
 			}
 		case models.ComponentElevator:
 			if el := comp.Elevator; el != nil {
 				if el.Width != nil && *el.Width < 0.8 {
-					comp.AuditFlags = append(comp.AuditFlags, "small cabin width (0.8m required)")
+					comp.AuditFlags = append(comp.AuditFlags, FlagElevatorNarrowWidth)
 				}
 				if el.Depth != nil && *el.Depth < 1.1 {
-					comp.AuditFlags = append(comp.AuditFlags, "small cabin depth (1.1m required)")
+					comp.AuditFlags = append(comp.AuditFlags, FlagElevatorShallowDep)
 				}
 				if el.Braille != nil && !*el.Braille {
-					comp.AuditFlags = append(comp.AuditFlags, "missing braille")
+					comp.AuditFlags = append(comp.AuditFlags, FlagElevatorNoBraille)
 				}
 				if el.Audio != nil && !*el.Audio {
-					comp.AuditFlags = append(comp.AuditFlags, "missing audio")
+					comp.AuditFlags = append(comp.AuditFlags, FlagElevatorNoAudio)
 				}
 			}
 		case models.ComponentParking:
 			if p := comp.Parking; p != nil {
 				if p.HasDisabledSpaces != nil && !*p.HasDisabledSpaces {
-					comp.AuditFlags = append(comp.AuditFlags, "no disabled spaces")
+					comp.AuditFlags = append(comp.AuditFlags, FlagParkingNoDisabledSpaces)
 				}
 			}
 		}

@@ -197,7 +197,7 @@ func TestWithAuditFlags(t *testing.T) {
 				Type:     models.ComponentEntrance,
 				Entrance: &models.EntranceProperties{Width: floatPtr(0.75)},
 			},
-			wantFlags: []string{"narrow width (0.8m required)"},
+			wantFlags: []string{FlagEntranceNarrowWidth},
 		},
 		{
 			name: "entrance: width exactly at minimum — no flag",
@@ -213,7 +213,7 @@ func TestWithAuditFlags(t *testing.T) {
 				Type:     models.ComponentEntrance,
 				Entrance: &models.EntranceProperties{HasStep: boolPtr(true)},
 			},
-			wantFlags: []string{"contains step"},
+			wantFlags: []string{FlagEntranceContainsStep},
 		},
 		{
 			name: "entrance: step height above threshold",
@@ -224,7 +224,7 @@ func TestWithAuditFlags(t *testing.T) {
 					StepHeight: floatPtr(0.1),
 				},
 			},
-			wantFlags: []string{"contains step", "high step (>0.05m)"},
+			wantFlags: []string{FlagEntranceContainsStep, FlagEntranceHighStep},
 		},
 		{
 			name: "entrance: step height at threshold — no high-step flag",
@@ -235,7 +235,7 @@ func TestWithAuditFlags(t *testing.T) {
 					StepHeight: floatPtr(0.05),
 				},
 			},
-			wantFlags: []string{"contains step"},
+			wantFlags: []string{FlagEntranceContainsStep},
 		},
 		{
 			name: "entrance: step with no ramp",
@@ -246,7 +246,7 @@ func TestWithAuditFlags(t *testing.T) {
 					HasRamp: boolPtr(false),
 				},
 			},
-			wantFlags: []string{"contains step", "step with no ramp"},
+			wantFlags: []string{FlagEntranceContainsStep, FlagEntranceStepNoRamp},
 		},
 		{
 			name: "entrance: step with ramp — no ramp flag",
@@ -257,7 +257,7 @@ func TestWithAuditFlags(t *testing.T) {
 					HasRamp: boolPtr(true),
 				},
 			},
-			wantFlags: []string{"contains step"},
+			wantFlags: []string{FlagEntranceContainsStep},
 		},
 		{
 			name: "entrance: nil entrance — no flags",
@@ -275,7 +275,7 @@ func TestWithAuditFlags(t *testing.T) {
 				Type:     models.ComponentRestroom,
 				Restroom: &models.RestroomProperties{WheelchairAccessible: boolPtr(false)},
 			},
-			wantFlags: []string{"not wheelchair accessible"},
+			wantFlags: []string{FlagRestroomNotAccessible},
 		},
 		{
 			name: "restroom: door width below minimum",
@@ -283,7 +283,7 @@ func TestWithAuditFlags(t *testing.T) {
 				Type:     models.ComponentRestroom,
 				Restroom: &models.RestroomProperties{DoorWidth: floatPtr(0.7)},
 			},
-			wantFlags: []string{"narrow door (0.8m required)"},
+			wantFlags: []string{FlagRestroomNarrowDoor},
 		},
 		{
 			name: "restroom: door width exactly at minimum — no flag",
@@ -299,7 +299,7 @@ func TestWithAuditFlags(t *testing.T) {
 				Type:     models.ComponentRestroom,
 				Restroom: &models.RestroomProperties{GrabRails: boolPtr(false)},
 			},
-			wantFlags: []string{"missing grab rails"},
+			wantFlags: []string{FlagRestroomNoGrabRails},
 		},
 		{
 			name: "restroom: nil restroom — no flags",
@@ -317,7 +317,7 @@ func TestWithAuditFlags(t *testing.T) {
 				Type:     models.ComponentElevator,
 				Elevator: &models.ElevatorProperties{Width: floatPtr(0.7)},
 			},
-			wantFlags: []string{"small cabin width (0.8m required)"},
+			wantFlags: []string{FlagElevatorNarrowWidth},
 		},
 		{
 			name: "elevator: cabin depth below minimum",
@@ -325,7 +325,7 @@ func TestWithAuditFlags(t *testing.T) {
 				Type:     models.ComponentElevator,
 				Elevator: &models.ElevatorProperties{Depth: floatPtr(1.0)},
 			},
-			wantFlags: []string{"small cabin depth (1.1m required)"},
+			wantFlags: []string{FlagElevatorShallowDep},
 		},
 		{
 			name: "elevator: missing braille",
@@ -333,7 +333,7 @@ func TestWithAuditFlags(t *testing.T) {
 				Type:     models.ComponentElevator,
 				Elevator: &models.ElevatorProperties{Braille: boolPtr(false)},
 			},
-			wantFlags: []string{"missing braille"},
+			wantFlags: []string{FlagElevatorNoBraille},
 		},
 		{
 			name: "elevator: missing audio",
@@ -341,7 +341,7 @@ func TestWithAuditFlags(t *testing.T) {
 				Type:     models.ComponentElevator,
 				Elevator: &models.ElevatorProperties{Audio: boolPtr(false)},
 			},
-			wantFlags: []string{"missing audio"},
+			wantFlags: []string{FlagElevatorNoAudio},
 		},
 		{
 			name: "elevator: nil elevator — no flags",
@@ -359,7 +359,7 @@ func TestWithAuditFlags(t *testing.T) {
 				Type:    models.ComponentParking,
 				Parking: &models.ParkingProperties{HasDisabledSpaces: boolPtr(false)},
 			},
-			wantFlags: []string{"no disabled spaces"},
+			wantFlags: []string{FlagParkingNoDisabledSpaces},
 		},
 		{
 			name: "parking: has disabled spaces — no flag",
