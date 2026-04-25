@@ -17,6 +17,7 @@ import (
 	"os"
 	"testing"
 
+	"github.com/InWheelOrg/inwheel-server/internal/a11y"
 	"github.com/InWheelOrg/inwheel-server/internal/testhelpers"
 	"github.com/InWheelOrg/inwheel-server/pkg/models"
 	"gorm.io/gorm"
@@ -49,6 +50,10 @@ func truncate(t *testing.T) {
 	testDB.Exec("TRUNCATE places, accessibility_profiles CASCADE")
 }
 
+func newTestServer() *Server {
+	return &Server{db: testDB, engine: &a11y.Engine{}}
+}
+
 func TestHandlePostPlace_WithAccessibility(t *testing.T) {
 	t.Cleanup(func() { truncate(t) })
 
@@ -65,7 +70,7 @@ func TestHandlePostPlace_WithAccessibility(t *testing.T) {
 
 	r := httptest.NewRequest(http.MethodPost, "/places", bytes.NewReader(body))
 	w := httptest.NewRecorder()
-	(&Server{db: testDB}).handlePostPlace(w, r)
+	newTestServer().handlePostPlace(w, r)
 
 	if w.Code != http.StatusCreated {
 		t.Fatalf("status = %d, want 201; body: %s", w.Code, w.Body.String())
@@ -76,9 +81,6 @@ func TestHandlePostPlace_WithAccessibility(t *testing.T) {
 
 	if place.Accessibility == nil {
 		t.Fatal("expected accessibility profile to be created")
-	}
-	if !place.Accessibility.NeedsAudit {
-		t.Error("expected NeedsAudit=true when accessibility is included in POST")
 	}
 }
 
@@ -95,7 +97,7 @@ func TestHandlePostPlace_WithoutAccessibility(t *testing.T) {
 
 	r := httptest.NewRequest(http.MethodPost, "/places", bytes.NewReader(body))
 	w := httptest.NewRecorder()
-	(&Server{db: testDB}).handlePostPlace(w, r)
+	newTestServer().handlePostPlace(w, r)
 
 	if w.Code != http.StatusCreated {
 		t.Fatalf("status = %d, want 201; body: %s", w.Code, w.Body.String())
@@ -109,6 +111,107 @@ func TestHandlePostPlace_WithoutAccessibility(t *testing.T) {
 	}
 }
 
+func TestHandlePostPlace_HardConflictReturns422(t *testing.T) {
+	t.Cleanup(func() { truncate(t) })
+
+	// step with no ramp + accessible = hard self-contradiction
+	stepHeight := 0.1
+	hasStep := true
+	hasRamp := false
+	body, _ := json.Marshal(models.Place{
+		Name:     "Conflicting Cafe",
+		Lat:      52.5,
+		Lng:      13.4,
+		Category: models.CategoryCafe,
+		Source:   "test",
+		Accessibility: &models.AccessibilityProfile{
+			OverallStatus: models.StatusAccessible,
+			Components: models.A11yComponents{
+				{
+					Type:          models.ComponentEntrance,
+					OverallStatus: models.StatusAccessible,
+					Entrance: &models.EntranceProperties{
+						HasStep:    &hasStep,
+						StepHeight: &stepHeight,
+						HasRamp:    &hasRamp,
+					},
+				},
+			},
+		},
+	})
+
+	r := httptest.NewRequest(http.MethodPost, "/places", bytes.NewReader(body))
+	w := httptest.NewRecorder()
+	newTestServer().handlePostPlace(w, r)
+
+	if w.Code != http.StatusUnprocessableEntity {
+		t.Fatalf("status = %d, want 422; body: %s", w.Code, w.Body.String())
+	}
+
+	var resp struct {
+		Error     string `json:"error"`
+		Conflicts []struct {
+			Component string `json:"component"`
+			Reason    string `json:"reason"`
+		} `json:"conflicts"`
+	}
+	if err := json.NewDecoder(w.Body).Decode(&resp); err != nil {
+		t.Fatalf("decode 422 response: %v", err)
+	}
+	if len(resp.Conflicts) == 0 {
+		t.Error("expected conflicts in 422 response body")
+	}
+}
+
+func TestHandlePostPlace_InformationalFlagsAllowed(t *testing.T) {
+	t.Cleanup(func() { truncate(t) })
+
+	// narrow width is informational only — should not block the write
+	narrowWidth := 0.75
+	body, _ := json.Marshal(models.Place{
+		Name:     "Narrow Cafe",
+		Lat:      52.5,
+		Lng:      13.4,
+		Category: models.CategoryCafe,
+		Source:   "test",
+		Accessibility: &models.AccessibilityProfile{
+			OverallStatus: models.StatusAccessible,
+			Components: models.A11yComponents{
+				{
+					Type:          models.ComponentEntrance,
+					OverallStatus: models.StatusAccessible,
+					Entrance:      &models.EntranceProperties{Width: &narrowWidth},
+				},
+			},
+		},
+	})
+
+	r := httptest.NewRequest(http.MethodPost, "/places", bytes.NewReader(body))
+	w := httptest.NewRecorder()
+	newTestServer().handlePostPlace(w, r)
+
+	if w.Code != http.StatusCreated {
+		t.Fatalf("status = %d, want 201; body: %s", w.Code, w.Body.String())
+	}
+
+	// Verify the flag was stored
+	var place models.Place
+	testDB.Preload("Accessibility").Last(&place)
+	if place.Accessibility == nil || len(place.Accessibility.Components) == 0 {
+		t.Fatal("expected accessibility with components")
+	}
+	flags := place.Accessibility.Components[0].AuditFlags
+	found := false
+	for _, f := range flags {
+		if f == "narrow width (0.8m required)" {
+			found = true
+		}
+	}
+	if !found {
+		t.Errorf("expected narrow width flag to be stored, got flags: %v", flags)
+	}
+}
+
 func TestHandlePatchAccessibility_PlaceNotFound(t *testing.T) {
 	t.Cleanup(func() { truncate(t) })
 
@@ -118,7 +221,7 @@ func TestHandlePatchAccessibility_PlaceNotFound(t *testing.T) {
 	r := httptest.NewRequest(http.MethodPatch, "/places/"+nonExistentID+"/accessibility", bytes.NewReader(body))
 	r.SetPathValue("id", nonExistentID)
 	w := httptest.NewRecorder()
-	(&Server{db: testDB}).handlePatchAccessibility(w, r)
+	newTestServer().handlePatchAccessibility(w, r)
 
 	if w.Code != http.StatusNotFound {
 		t.Errorf("status = %d, want 404; body: %s", w.Code, w.Body.String())
@@ -138,7 +241,7 @@ func TestHandlePatchAccessibility_CreatePath(t *testing.T) {
 	r := httptest.NewRequest(http.MethodPatch, "/places/"+place.ID+"/accessibility", bytes.NewReader(body))
 	r.SetPathValue("id", place.ID)
 	w := httptest.NewRecorder()
-	(&Server{db: testDB}).handlePatchAccessibility(w, r)
+	newTestServer().handlePatchAccessibility(w, r)
 
 	if w.Code != http.StatusOK {
 		t.Fatalf("status = %d, want 200; body: %s", w.Code, w.Body.String())
@@ -147,11 +250,92 @@ func TestHandlePatchAccessibility_CreatePath(t *testing.T) {
 	var profile models.AccessibilityProfile
 	testDB.Where("place_id = ?", place.ID).First(&profile)
 
-	if !profile.NeedsAudit {
-		t.Error("expected NeedsAudit=true on first PATCH")
+	if profile.PlaceID != place.ID {
+		t.Errorf("PlaceID = %s, want %s", profile.PlaceID, place.ID)
 	}
-	if profile.DataVersion != 1 {
-		t.Errorf("DataVersion = %d, want 1 on first PATCH", profile.DataVersion)
+	if profile.OverallStatus != models.StatusLimited {
+		t.Errorf("OverallStatus = %s, want limited", profile.OverallStatus)
+	}
+}
+
+func TestHandlePatchAccessibility_UpdatesExistingProfile(t *testing.T) {
+	t.Cleanup(func() { truncate(t) })
+
+	place := models.Place{
+		Name:     "Test Place",
+		Lat:      52.5,
+		Lng:      13.4,
+		Category: models.CategoryCafe,
+		Source:   "test",
+		Accessibility: &models.AccessibilityProfile{
+			OverallStatus: models.StatusAccessible,
+		},
+	}
+	testDB.Create(&place)
+
+	body, _ := json.Marshal(models.AccessibilityProfile{
+		OverallStatus: models.StatusLimited,
+	})
+
+	r := httptest.NewRequest(http.MethodPatch, "/places/"+place.ID+"/accessibility", bytes.NewReader(body))
+	r.SetPathValue("id", place.ID)
+	w := httptest.NewRecorder()
+	newTestServer().handlePatchAccessibility(w, r)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200; body: %s", w.Code, w.Body.String())
+	}
+
+	var profile models.AccessibilityProfile
+	testDB.Where("place_id = ?", place.ID).First(&profile)
+
+	if profile.OverallStatus != models.StatusLimited {
+		t.Errorf("OverallStatus = %s, want limited", profile.OverallStatus)
+	}
+}
+
+func TestHandlePatchAccessibility_ConflictReturns422(t *testing.T) {
+	t.Cleanup(func() { truncate(t) })
+
+	place := models.Place{Name: "Test Place", Lat: 52.5, Lng: 13.4, Category: models.CategoryCafe, Source: "test"}
+	testDB.Create(&place)
+
+	stepHeight := 0.1
+	hasStep := true
+	hasRamp := false
+	body, _ := json.Marshal(models.AccessibilityProfile{
+		OverallStatus: models.StatusAccessible,
+		Components: models.A11yComponents{
+			{
+				Type:          models.ComponentEntrance,
+				OverallStatus: models.StatusAccessible,
+				Entrance: &models.EntranceProperties{
+					HasStep:    &hasStep,
+					StepHeight: &stepHeight,
+					HasRamp:    &hasRamp,
+				},
+			},
+		},
+	})
+
+	r := httptest.NewRequest(http.MethodPatch, "/places/"+place.ID+"/accessibility", bytes.NewReader(body))
+	r.SetPathValue("id", place.ID)
+	w := httptest.NewRecorder()
+	newTestServer().handlePatchAccessibility(w, r)
+
+	if w.Code != http.StatusUnprocessableEntity {
+		t.Fatalf("status = %d, want 422; body: %s", w.Code, w.Body.String())
+	}
+
+	var resp struct {
+		Error     string `json:"error"`
+		Conflicts []any  `json:"conflicts"`
+	}
+	if err := json.NewDecoder(w.Body).Decode(&resp); err != nil {
+		t.Fatalf("decode 422 response: %v", err)
+	}
+	if len(resp.Conflicts) == 0 {
+		t.Error("expected conflicts in 422 response body")
 	}
 }
 
@@ -173,7 +357,7 @@ func TestHandleGetPlace_ReturnsPlaceWithAccessibility(t *testing.T) {
 	r := httptest.NewRequest(http.MethodGet, "/places/"+place.ID, nil)
 	r.SetPathValue("id", place.ID)
 	w := httptest.NewRecorder()
-	(&Server{db: testDB}).handleGetPlace(w, r)
+	newTestServer().handleGetPlace(w, r)
 
 	if w.Code != http.StatusOK {
 		t.Fatalf("status = %d, want 200; body: %s", w.Code, w.Body.String())
@@ -195,53 +379,9 @@ func TestHandleGetPlace_NotFound(t *testing.T) {
 	r := httptest.NewRequest(http.MethodGet, "/places/"+nonExistentID, nil)
 	r.SetPathValue("id", nonExistentID)
 	w := httptest.NewRecorder()
-	(&Server{db: testDB}).handleGetPlace(w, r)
+	newTestServer().handleGetPlace(w, r)
 
 	if w.Code != http.StatusNotFound {
 		t.Errorf("status = %d, want 404", w.Code)
-	}
-}
-
-func TestHandlePatchAccessibility_UpdateIncrementsVersion(t *testing.T) {
-	t.Cleanup(func() { truncate(t) })
-
-	place := models.Place{
-		Name:     "Test Place",
-		Lat:      52.5,
-		Lng:      13.4,
-		Category: models.CategoryCafe,
-		Source:   "test",
-		Accessibility: &models.AccessibilityProfile{
-			OverallStatus: models.StatusAccessible,
-			NeedsAudit:    false,
-			DataVersion:   1,
-		},
-	}
-	testDB.Create(&place)
-
-	body, _ := json.Marshal(models.AccessibilityProfile{
-		OverallStatus: models.StatusLimited,
-	})
-
-	r := httptest.NewRequest(http.MethodPatch, "/places/"+place.ID+"/accessibility", bytes.NewReader(body))
-	r.SetPathValue("id", place.ID)
-	w := httptest.NewRecorder()
-	(&Server{db: testDB}).handlePatchAccessibility(w, r)
-
-	if w.Code != http.StatusOK {
-		t.Fatalf("status = %d, want 200; body: %s", w.Code, w.Body.String())
-	}
-
-	var profile models.AccessibilityProfile
-	testDB.Where("place_id = ?", place.ID).First(&profile)
-
-	if !profile.NeedsAudit {
-		t.Error("expected NeedsAudit=true after update")
-	}
-	if profile.DataVersion != 2 {
-		t.Errorf("DataVersion = %d, want 2 after update", profile.DataVersion)
-	}
-	if profile.OverallStatus != models.StatusLimited {
-		t.Errorf("OverallStatus = %s, want limited", profile.OverallStatus)
 	}
 }

@@ -6,7 +6,9 @@
 package a11y
 
 import (
+	"fmt"
 	"slices"
+	"strings"
 
 	"github.com/InWheelOrg/inwheel-server/pkg/models"
 )
@@ -32,6 +34,51 @@ const (
 
 // Engine provides logic for accessibility data processing and inheritance.
 type Engine struct{}
+
+// Conflict represents a self-contradiction in submitted data: a component is marked accessible
+// but contains a fact (submitted by the client themselves) that makes that impossible.
+type Conflict struct {
+	Component models.A11yComponentType
+	Reason    string
+}
+
+// hardConflictFlags are flags that represent direct self-contradictions in the submitted data —
+// either the client explicitly stated inaccessibility, or described a physical barrier with no workaround.
+// These are distinct from informational threshold flags (narrow width, missing braille, etc.) which
+// are stored for clients to use but never block a write.
+var hardConflictFlags = map[string]bool{
+	FlagEntranceStepNoRamp:    true, // has_step=true + has_ramp=false = impassable physical barrier
+	FlagRestroomNotAccessible: true, // wheelchair_accessible=false contradicts overall_status=accessible
+	FlagParkingNoDisabledSpaces: true, // has_disabled_spaces=false contradicts overall_status=accessible
+}
+
+// DetectConflicts checks each component for hard self-contradictions between its submitted
+// OverallStatus and the facts the client submitted. Must be called after WithAuditFlags.
+// Only hard contradiction flags (not informational threshold flags) can block a write.
+func (e *Engine) DetectConflicts(profile *models.AccessibilityProfile) []Conflict {
+	if profile == nil {
+		return nil
+	}
+	var conflicts []Conflict
+	for _, comp := range profile.Components {
+		if comp.OverallStatus != models.StatusAccessible {
+			continue
+		}
+		var hardFlags []string
+		for _, f := range comp.AuditFlags {
+			if hardConflictFlags[f] {
+				hardFlags = append(hardFlags, f)
+			}
+		}
+		if len(hardFlags) > 0 {
+			conflicts = append(conflicts, Conflict{
+				Component: comp.Type,
+				Reason:    fmt.Sprintf("status is accessible but: %s", strings.Join(hardFlags, ", ")),
+			})
+		}
+	}
+	return conflicts
+}
 
 // ComputeEffectiveProfile merges accessibility components from a child place and its parent.
 // Child places inherit parent components they don't own (e.g., a shop inherits a mall's parking).

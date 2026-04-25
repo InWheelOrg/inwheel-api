@@ -15,6 +15,7 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/InWheelOrg/inwheel-server/internal/a11y"
 	"github.com/InWheelOrg/inwheel-server/internal/db"
 	"github.com/InWheelOrg/inwheel-server/internal/geo"
 	"github.com/InWheelOrg/inwheel-server/pkg/models"
@@ -24,7 +25,8 @@ import (
 
 // Server handles the HTTP requests for the InWheel API.
 type Server struct {
-	db *gorm.DB
+	db     *gorm.DB
+	engine *a11y.Engine
 }
 
 // main initializes the database connection, runs migrations, and starts the public API server.
@@ -62,7 +64,7 @@ func main() {
 		os.Exit(1)
 	}
 
-	srv := &Server{db: gormDB}
+	srv := &Server{db: gormDB, engine: &a11y.Engine{}}
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /places", srv.handleGetPlaces)
@@ -152,7 +154,7 @@ func (s *Server) handleGetPlace(w http.ResponseWriter, r *http.Request) {
 }
 
 // handlePostPlace creates a new place in the database.
-// If accessibility data is included, it automatically flags the profile for audit.
+// If accessibility data is included, it is validated and audit flags computed before insert.
 // Endpoint: POST /places
 func (s *Server) handlePostPlace(w http.ResponseWriter, r *http.Request) {
 	// Limit the request body to 1 MB (1 << 20 bytes)
@@ -165,8 +167,12 @@ func (s *Server) handlePostPlace(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if place.Accessibility != nil {
-		place.Accessibility.NeedsAudit = true
 		place.Accessibility.UpdatedAt = time.Now()
+		s.engine.WithAuditFlags(place.Accessibility)
+		if conflicts := s.engine.DetectConflicts(place.Accessibility); len(conflicts) > 0 {
+			jsonResponse(w, conflictError(conflicts), http.StatusUnprocessableEntity)
+			return
+		}
 	}
 
 	if err := s.db.Create(&place).Error; err != nil {
@@ -178,7 +184,7 @@ func (s *Server) handlePostPlace(w http.ResponseWriter, r *http.Request) {
 }
 
 // handlePatchAccessibility updates or creates the accessibility profile for a specific place.
-// It increments the data version and sets needs_audit to true.
+// Audit flags are computed from submitted component properties and conflicts return 422.
 // Endpoint: PATCH /places/{id}/accessibility
 func (s *Server) handlePatchAccessibility(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
@@ -189,6 +195,12 @@ func (s *Server) handlePatchAccessibility(w http.ResponseWriter, r *http.Request
 	var input models.AccessibilityProfile
 	if err := json.NewDecoder(r.Body).Decode(&input); err != nil {
 		http.Error(w, "Payload too large or invalid JSON", http.StatusBadRequest)
+		return
+	}
+
+	s.engine.WithAuditFlags(&input)
+	if conflicts := s.engine.DetectConflicts(&input); len(conflicts) > 0 {
+		jsonResponse(w, conflictError(conflicts), http.StatusUnprocessableEntity)
 		return
 	}
 
@@ -205,8 +217,6 @@ func (s *Server) handlePatchAccessibility(w http.ResponseWriter, r *http.Request
 				return err // ErrRecordNotFound propagates as-is 404, other errors 500
 			}
 			input.PlaceID = id
-			input.NeedsAudit = true
-			input.DataVersion = 1
 			input.UpdatedAt = time.Now()
 			if err := tx.Create(&input).Error; err != nil {
 				return err
@@ -218,8 +228,6 @@ func (s *Server) handlePatchAccessibility(w http.ResponseWriter, r *http.Request
 		updates := map[string]any{
 			"overall_status": input.OverallStatus,
 			"components":     input.Components,
-			"needs_audit":    true,
-			"data_version":   profile.DataVersion + 1,
 			"updated_at":     time.Now(),
 		}
 
@@ -240,6 +248,25 @@ func (s *Server) handlePatchAccessibility(w http.ResponseWriter, r *http.Request
 	}
 
 	jsonResponse(w, result, http.StatusOK)
+}
+
+// conflictError builds the 422 response body from a slice of detected conflicts.
+func conflictError(conflicts []a11y.Conflict) any {
+	type conflictItem struct {
+		Component string `json:"component"`
+		Reason    string `json:"reason"`
+	}
+	items := make([]conflictItem, len(conflicts))
+	for i, c := range conflicts {
+		items[i] = conflictItem{Component: string(c.Component), Reason: c.Reason}
+	}
+	return struct {
+		Error     string         `json:"error"`
+		Conflicts []conflictItem `json:"conflicts"`
+	}{
+		Error:     "accessibility data contains conflicts",
+		Conflicts: items,
+	}
 }
 
 // jsonResponse is a helper to write a JSON response to the client.
