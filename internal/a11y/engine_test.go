@@ -168,6 +168,159 @@ func TestComputeEffectiveProfile(t *testing.T) {
 	}
 }
 
+func TestDetectConflicts(t *testing.T) {
+	engine := &Engine{}
+
+	tests := []struct {
+		name          string
+		components    []models.A11yComponent
+		wantConflicts int
+	}{
+		{
+			name:          "nil profile",
+			components:    nil,
+			wantConflicts: 0,
+		},
+		{
+			name: "no components",
+			components:    []models.A11yComponent{},
+			wantConflicts: 0,
+		},
+		// Hard contradictions — must block
+		{
+			name: "entrance: step with no ramp + accessible",
+			components: []models.A11yComponent{
+				{
+					Type:          models.ComponentEntrance,
+					OverallStatus: models.StatusAccessible,
+					AuditFlags:    []string{FlagEntranceStepNoRamp},
+				},
+			},
+			wantConflicts: 1,
+		},
+		{
+			name: "restroom: not wheelchair accessible + accessible",
+			components: []models.A11yComponent{
+				{
+					Type:          models.ComponentRestroom,
+					OverallStatus: models.StatusAccessible,
+					AuditFlags:    []string{FlagRestroomNotAccessible},
+				},
+			},
+			wantConflicts: 1,
+		},
+		{
+			name: "parking: no disabled spaces + accessible",
+			components: []models.A11yComponent{
+				{
+					Type:          models.ComponentParking,
+					OverallStatus: models.StatusAccessible,
+					AuditFlags:    []string{FlagParkingNoDisabledSpaces},
+				},
+			},
+			wantConflicts: 1,
+		},
+		// Informational threshold flags — must not block
+		{
+			name: "entrance: narrow width + accessible — informational only",
+			components: []models.A11yComponent{
+				{
+					Type:          models.ComponentEntrance,
+					OverallStatus: models.StatusAccessible,
+					AuditFlags:    []string{FlagEntranceNarrowWidth},
+				},
+			},
+			wantConflicts: 0,
+		},
+		{
+			name: "entrance: high step + accessible — informational only",
+			components: []models.A11yComponent{
+				{
+					Type:          models.ComponentEntrance,
+					OverallStatus: models.StatusAccessible,
+					AuditFlags:    []string{FlagEntranceHighStep},
+				},
+			},
+			wantConflicts: 0,
+		},
+		{
+			name: "restroom: narrow door + accessible — informational only",
+			components: []models.A11yComponent{
+				{
+					Type:          models.ComponentRestroom,
+					OverallStatus: models.StatusAccessible,
+					AuditFlags:    []string{FlagRestroomNarrowDoor},
+				},
+			},
+			wantConflicts: 0,
+		},
+		{
+			name: "elevator: narrow width + accessible — informational only",
+			components: []models.A11yComponent{
+				{
+					Type:          models.ComponentElevator,
+					OverallStatus: models.StatusAccessible,
+					AuditFlags:    []string{FlagElevatorNarrowWidth},
+				},
+			},
+			wantConflicts: 0,
+		},
+		// Status other than accessible — never a conflict
+		{
+			name: "step with no ramp + limited — no conflict",
+			components: []models.A11yComponent{
+				{
+					Type:          models.ComponentEntrance,
+					OverallStatus: models.StatusLimited,
+					AuditFlags:    []string{FlagEntranceStepNoRamp},
+				},
+			},
+			wantConflicts: 0,
+		},
+		{
+			name: "restroom not accessible + inaccessible — no conflict",
+			components: []models.A11yComponent{
+				{
+					Type:          models.ComponentRestroom,
+					OverallStatus: models.StatusInaccessible,
+					AuditFlags:    []string{FlagRestroomNotAccessible},
+				},
+			},
+			wantConflicts: 0,
+		},
+		// Multiple components — only conflicting ones reported
+		{
+			name: "two components, one conflict",
+			components: []models.A11yComponent{
+				{
+					Type:          models.ComponentEntrance,
+					OverallStatus: models.StatusAccessible,
+					AuditFlags:    []string{FlagEntranceNarrowWidth}, // informational only
+				},
+				{
+					Type:          models.ComponentRestroom,
+					OverallStatus: models.StatusAccessible,
+					AuditFlags:    []string{FlagRestroomNotAccessible}, // hard conflict
+				},
+			},
+			wantConflicts: 1,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var profile *models.AccessibilityProfile
+			if tt.components != nil {
+				profile = &models.AccessibilityProfile{Components: tt.components}
+			}
+			conflicts := engine.DetectConflicts(profile)
+			if len(conflicts) != tt.wantConflicts {
+				t.Errorf("DetectConflicts() = %d conflicts, want %d: %v", len(conflicts), tt.wantConflicts, conflicts)
+			}
+		})
+	}
+}
+
 func TestWithAuditFlags(t *testing.T) {
 	engine := &Engine{}
 

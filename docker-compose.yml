@@ -20,17 +20,6 @@ services:
         limits:
           memory: 1536M
 
-  ollama:
-    image: ollama/ollama:latest
-    ports:
-      - "11434:11434"
-    volumes:
-      - ollama_data:/root/.ollama
-    environment:
-      - AUDIT_MODEL=${AUDIT_MODEL:-deepseek-r1:1.5b}
-    entrypoint: /bin/sh
-    command: -c "ollama serve & sleep 5 && ollama pull $${AUDIT_MODEL} && wait"
-
   api:
     build:
       context: .
@@ -46,25 +35,5 @@ services:
       db:
         condition: service_healthy
 
-  auditor:
-    build:
-      context: .
-      dockerfile: cmd/auditor/Dockerfile
-    environment:
-      - DB_HOST=db
-      - DB_USER=${DB_USER}
-      - DB_PASSWORD=${DB_PASSWORD}
-      - DB_NAME=${DB_NAME}
-      - OLLAMA_URL=${OLLAMA_URL:-http://ollama:11434}
-      - AUDIT_MODEL=${AUDIT_MODEL:-deepseek-r1:1.5b}
-    depends_on:
-      db:
-        condition: service_healthy
-      ollama:
-        condition: service_started
-      api:
-        condition: service_started
-
 volumes:
   postgres_data:
-  ollama_data:

@@ -38,40 +38,17 @@ const (
 )
 
 // AccessibilityProfile summarizes the accessibility of a place.
-// This model also acts as the audit queue for the Conflict Auditor.
 type AccessibilityProfile struct {
 	// ID is the unique identifier for the profile.
 	ID string `json:"id" gorm:"primaryKey;type:uuid;default:gen_random_uuid()"`
 	// PlaceID is the identifier of the related place.
 	PlaceID string `json:"place_id" gorm:"uniqueIndex;type:uuid"`
-	// OverallStatus is the summary rating of accessibility.
+	// OverallStatus is the client-submitted accessibility rating, validated against component flags on write.
 	OverallStatus A11yStatus `json:"overall_status"`
 	// Components are the individual accessibility features (entrance, etc).
 	Components A11yComponents `json:"components,omitzero" gorm:"type:jsonb"`
-	// Audit contains the findings of the automated accessibility audit.
-	Audit *AuditResult `json:"audit,omitzero" gorm:"type:jsonb"`
-	// NeedsAudit indicates if the profile needs to be reviewed by the AI auditor.
-	NeedsAudit bool `json:"-" gorm:"index"`
-	// AuditLockedUntil prevents possible multiple workers from processing the same profile.
-	AuditLockedUntil *time.Time `json:"-"`
-	// Priority determines the order of auditing (higher = sooner).
-	Priority int `json:"-" gorm:"default:1"`
-	// DataVersion is incremented on every write to detect stale audit results.
-	DataVersion int `json:"data_version" gorm:"default:1"`
 	// UpdatedAt is the timestamp when the profile was last updated.
 	UpdatedAt time.Time `json:"updated_at"`
-}
-
-// AuditResult contains the findings of the automated accessibility audit.
-type AuditResult struct {
-	// HasConflict is true if the AI detected logical contradictions.
-	HasConflict bool `json:"has_conflict"`
-	// Reasoning explains why a conflict was flagged (e.g., "Accessible but has steps").
-	Reasoning string `json:"reasoning"`
-	// Confidence is the AI's certainty score (0.0 to 1.0).
-	Confidence float64 `json:"confidence"`
-	// LastAudit is the ISO8601 timestamp of the last audit pass.
-	LastAudit string `json:"last_audit"`
 }
 
 // A11yComponent represents a modular accessibility feature.
@@ -145,28 +122,6 @@ type ElevatorProperties struct {
 	Braille *bool `json:"braille,omitzero"`
 	// Audio indicates if there are audio announcements.
 	Audio *bool `json:"audio,omitzero"`
-}
-
-// Scan tells the SQL driver how to read the JSONB bytes into the AuditResult struct.
-func (a *AuditResult) Scan(value interface{}) error {
-	if value == nil {
-		return nil
-	}
-
-	bytes, ok := value.([]byte)
-	if !ok {
-		return errors.New("type assertion to []byte failed for AuditResult")
-	}
-
-	return json.Unmarshal(bytes, a)
-}
-
-// Value tells the SQL driver how to write the AuditResult to the database as JSONB.
-func (a *AuditResult) Value() (driver.Value, error) {
-	if a == nil {
-		return nil, nil
-	}
-	return json.Marshal(a)
 }
 
 // Scan tells the SQL driver how to read the JSONB bytes into the slice.
