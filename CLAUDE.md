@@ -45,7 +45,7 @@ The API is a pure data layer. It stores and returns accessibility facts; it neve
 
 **`internal/a11y`** — Accessibility rule engine:
 - `Engine.WithAuditFlags()` — populates `AuditFlags` on each component deterministically from property values (e.g. entrance width < 0.8m → `"narrow width (0.8m required)"`)
-- `Engine.DetectConflicts()` — returns conflicts where a component is marked `StatusAccessible` but carries technical violation flags; called after `WithAuditFlags`
+- `Engine.DetectConflicts()` — returns conflicts where a component is marked `StatusAccessible` but carries a hard contradiction flag (step-with-no-ramp, explicitly-not-wheelchair-accessible, no-disabled-spaces); informational threshold flags never trigger this
 - `Engine.ComputeEffectiveProfile()` — resolves inherited components from parent places
 
 **`internal/geo`** — PostGIS spatial queries (`ST_DWithin`, `ST_MakeEnvelope`)

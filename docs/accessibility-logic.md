@@ -1,69 +1,88 @@
 # Accessibility Data Logic
 
-This document describes how InWheel handles accessibility data, inheritance between parent and child places, and the
-role of the LLM Auditor in resolving logical contradictions.
+This document describes how InWheel handles accessibility data, inheritance between parent and child places, and write-time validation.
 
 ## 1. Core Principles
 
-The InWheel accessibility engine is designed with three core principles:
-
-1. **Raw Data Fidelity:** The data layer (API and Engine) stores exactly what is provided, even if it is logically
-   contradictory.
-2. **Specific > General:** Specific data provided for a child place always overrides general data from a parent.
-3. **Audited Logic:** Complex logical validation is delegated to a specialized the LLM Auditor service rather than being
-   hardcoded into the storage layer.
+1. **Data fidelity:** The API stores what is submitted. It does not compute whether a place is accessible — that judgment belongs to the client, which knows the user's specific needs.
+2. **Facts over opinions:** `AuditFlags` on a component are objective facts derived from submitted property values (e.g. entrance width < 0.8m is a measurable fact). They are stored for clients to use, not for the server to act on.
+3. **Specific overrides general:** A child place's own component data always takes precedence over the parent's equivalent component.
+4. **Self-contradictions are rejected at write time:** Data that directly contradicts itself (e.g. a component marked `accessible` but containing a physical barrier the submitter described) is rejected with HTTP 422. Everything else is accepted.
 
 ## 2. Inheritance and Overrides
 
-InWheel supports a hierarchical "Parent-Child" relationship (e.g., a Mall containing multiple Shops).
+InWheel supports a hierarchical parent-child relationship (e.g. a mall containing shops).
 
-### Top-Down Inheritance
+### Effective Profile
 
-When querying a child place (e.g., a Shop), the system calculates an **Effective Profile** by merging its own
-accessibility data with its parent's data.
+When querying a child place, the system can compute an **effective profile** by merging the child's own components with the parent's. The child inherits any component type the parent has that the child does not provide itself.
 
-- The child inherits any accessibility components that the parent has but the child does not (e.g., a shop inherits the
-  mall's parking information).
-- Inherited components are marked with `is_inherited: true` and include the `source_id` of the parent.
+Inherited components are marked `is_inherited: true` and carry the `source_id` of the parent place.
 
-### Specific Overrides
+### Child Overrides Parent
 
-If a child place provides its own data for a specific component type (e.g., its own Entrance status), it **entirely
-ignores** the parent's data for that same component type.
+If a child provides its own data for a component type, the parent's data for that same type is ignored entirely for that child's view. There is no partial merging within a component.
 
-- Example: If a Mall has an `accessible` entrance but a Shop inside has an `inaccessible` entrance, the Shop's effective
-  profile will show only the `inaccessible` entrance. The Mall's entrance data is discarded for that shop's view.
+Example: a mall has an `accessible` entrance; a shop inside has its own `inaccessible` entrance. The shop's effective profile shows only its own `inaccessible` entrance.
 
 ### No Bottom-Up Propagation
 
-A child's accessibility status or components **never** change the parent's record in the database. Each place maintains
-its own source of truth.
+A child's data never modifies the parent's record. Each place is its own source of truth.
 
-## 3. Component vs. Overall Status
+## 3. AuditFlags
 
-The storage and merging layer (`a11y.Engine`) does not perform automatic validation:
+On every write (POST or PATCH with accessibility data), `a11y.Engine.WithAuditFlags()` runs synchronously and populates `AuditFlags` on each component based on the submitted property values:
 
-- **Component Status:** Technical details (like `step_height: 0.20m`) do not automatically change the component's
-  `overall_status`. If a user marks an entrance as `accessible` but provides a 20cm step, the system saves it exactly
-  as-is.
-- **Place Status:** The statuses of individual components (Entrance, Restroom, etc.) do not automatically update the
-  `overall_status` of the entire Place.
+| Component | Flag | Condition |
+|---|---|---|
+| Entrance | `narrow width (0.8m required)` | `width < 0.8m` |
+| Entrance | `contains step` | `has_step = true` |
+| Entrance | `high step (>0.05m)` | `has_step = true` and `step_height > 0.05m` |
+| Entrance | `step with no ramp` | `has_step = true` and `has_ramp = false` |
+| Restroom | `not wheelchair accessible` | `wheelchair_accessible = false` |
+| Restroom | `narrow door (0.8m required)` | `door_width < 0.8m` |
+| Restroom | `missing grab rails` | `grab_rails = false` |
+| Elevator | `small cabin width (0.8m required)` | `width < 0.8m` |
+| Elevator | `small cabin depth (1.1m required)` | `depth < 1.1m` |
+| Elevator | `missing braille` | `braille = false` |
+| Elevator | `missing audio` | `audio = false` |
+| Parking | `no disabled spaces` | `has_disabled_spaces = false` |
 
-This decoupling allows the system to remain a flexible storage engine that preserves the raw input from various
-sources (OSM, manual updates, ingestion).
+These flags are stored on the component and returned in API responses. Clients use them to evaluate relevance for a specific user's needs.
 
-## 4. The Role of the LLM Auditor
+## 4. Write-time Validation
 
-Since the data layer allows contradictions, the **LLM Auditor** is responsible for identifying and flagging them.
+Flags fall into two categories that determine whether a write is accepted or rejected.
 
-The Auditor is a background worker that:
+### Hard Contradiction Flags (reject with HTTP 422)
 
-1. **Detects Technical Contradictions:** It flags cases where technical properties (e.g., `step_height > 0.05m`)
-   contradict a component's `overall_status` (e.g., `accessible`).
-2. **Detects Profile Contradictions:** It flags cases where a critical component (like an `inaccessible` entrance) makes
-   a profile's `overall_status` (e.g., `accessible`) impossible.
-3. **Flags for Review:** Instead of automatically changing the data, it sets `audit.has_conflict = true` and provides
-   reasoning. This allows UI layers to show warnings or human moderators to review the data.
+These flags represent cases where the submitter's own data directly contradicts the submitted `overall_status`. The data is internally inconsistent regardless of any accessibility opinion.
 
-By delegating this to the Auditor, the system can handle complex, edge-case-heavy accessibility rules without bloating
-the core API logic.
+| Flag | Why it's a hard contradiction |
+|---|---|
+| `step with no ramp` | The submitter described a physical barrier with no workaround, then marked the component accessible |
+| `not wheelchair accessible` | The submitter explicitly stated it is not wheelchair accessible, then marked it accessible |
+| `no disabled spaces` | The submitter explicitly stated there are no disabled spaces, then marked parking accessible |
+
+A 422 response includes the list of conflicts:
+
+```json
+{
+  "error": "accessibility data contains conflicts",
+  "conflicts": [
+    { "component": "entrance", "reason": "status is accessible but: step with no ramp" }
+  ]
+}
+```
+
+### Informational Flags (stored, never block)
+
+All other flags (narrow width, high step, missing braille, etc.) are based on measurement thresholds derived from accessibility standards. They are stored as facts for clients to interpret. A place with a 0.75m entrance can still be marked `accessible` — whether that matters depends on the user's wheelchair width, which the server does not know.
+
+## 5. What the Server Does Not Do
+
+- It does not compute a general accessibility rating for a place.
+- It does not decide whether a set of flags makes a place inaccessible.
+- It does not modify `overall_status` based on component data.
+
+These decisions belong to client applications, which can filter and rank places based on the specific accessibility needs of their users.

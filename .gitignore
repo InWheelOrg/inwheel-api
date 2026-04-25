@@ -4,4 +4,6 @@
 .postman/
 postman/
 .env
-.DS_Store.worktrees/
+.DS_Store
+.worktrees/
+docs/superpowers/
