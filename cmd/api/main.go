@@ -10,7 +10,6 @@ import (
 	"encoding/json"
 	"errors"
 	"log/slog"
-	"math"
 	"net/http"
 	"os"
 	"strconv"
@@ -19,6 +18,7 @@ import (
 	"github.com/InWheelOrg/inwheel-server/internal/a11y"
 	"github.com/InWheelOrg/inwheel-server/internal/db"
 	"github.com/InWheelOrg/inwheel-server/internal/geo"
+	"github.com/InWheelOrg/inwheel-server/internal/validation"
 	"github.com/InWheelOrg/inwheel-server/pkg/models"
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
@@ -99,36 +99,30 @@ func main() {
 // If 'min_lng', 'min_lat', 'max_lng', and 'max_lat' are provided, it performs a bounding box search.
 //
 // If no spatial parameters are present, it defaults to returning the most recently updated 100 places.
-// It returns a 400 Bad Request if coordinate parameters are present but malformed.
+// Returns 400 with a structured field-error list if any query param is malformed or out of bounds.
 func (s *Server) handleGetPlaces(w http.ResponseWriter, r *http.Request) {
 	q := r.URL.Query()
-	lngStr := q.Get("lng")
-	latStr := q.Get("lat")
-	radiusStr := q.Get("radius")
+	if errs := validation.PlacesQuery(q); len(errs) > 0 {
+		jsonResponse(w, validationError(errs), http.StatusBadRequest)
+		return
+	}
 
 	var places []models.Place
 	var err error
 
-	if lngStr != "" && latStr != "" && radiusStr != "" {
-		lng, ok1 := parseCoord(w, lngStr, "longitude")
-		lat, ok2 := parseCoord(w, latStr, "latitude")
-		radius, ok3 := parseCoord(w, radiusStr, "radius")
-
-		if !ok1 || !ok2 || !ok3 {
-			return
-		}
+	switch {
+	case q.Get("lng") != "":
+		lng, _ := strconv.ParseFloat(q.Get("lng"), 64)
+		lat, _ := strconv.ParseFloat(q.Get("lat"), 64)
+		radius, _ := strconv.ParseFloat(q.Get("radius"), 64)
 		places, err = geo.FindNearbyPlaces(s.db, lng, lat, radius)
-	} else if q.Get("min_lng") != "" {
-		minLng, ok1 := parseCoord(w, q.Get("min_lng"), "min_lng")
-		minLat, ok2 := parseCoord(w, q.Get("min_lat"), "min_lat")
-		maxLng, ok3 := parseCoord(w, q.Get("max_lng"), "max_lng")
-		maxLat, ok4 := parseCoord(w, q.Get("max_lat"), "max_lat")
-
-		if !ok1 || !ok2 || !ok3 || !ok4 {
-			return
-		}
+	case q.Get("min_lng") != "":
+		minLng, _ := strconv.ParseFloat(q.Get("min_lng"), 64)
+		minLat, _ := strconv.ParseFloat(q.Get("min_lat"), 64)
+		maxLng, _ := strconv.ParseFloat(q.Get("max_lng"), 64)
+		maxLat, _ := strconv.ParseFloat(q.Get("max_lat"), 64)
 		places, err = geo.FindPlacesInBoundingBox(s.db, minLng, minLat, maxLng, maxLat)
-	} else {
+	default:
 		err = s.db.Preload("Accessibility").Order("updated_at DESC").Limit(100).Find(&places).Error
 	}
 
@@ -147,6 +141,11 @@ func (s *Server) handleGetPlaces(w http.ResponseWriter, r *http.Request) {
 // Endpoint: GET /places/{id}
 func (s *Server) handleGetPlace(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
+	if errs := validation.PlaceID(id); len(errs) > 0 {
+		jsonResponse(w, validationError(errs), http.StatusBadRequest)
+		return
+	}
+
 	var place models.Place
 	if err := s.db.Preload("Accessibility").First(&place, "id = ?", id).Error; err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
@@ -182,6 +181,11 @@ func (s *Server) handlePostPlace(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if errs := validation.Place(&place); len(errs) > 0 {
+		jsonResponse(w, validationError(errs), http.StatusBadRequest)
+		return
+	}
+
 	if place.Accessibility != nil {
 		place.Accessibility.UpdatedAt = time.Now()
 		s.engine.WithAuditFlags(place.Accessibility)
@@ -204,6 +208,10 @@ func (s *Server) handlePostPlace(w http.ResponseWriter, r *http.Request) {
 // Endpoint: PATCH /places/{id}/accessibility
 func (s *Server) handlePatchAccessibility(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
+	if errs := validation.PlaceID(id); len(errs) > 0 {
+		jsonResponse(w, validationError(errs), http.StatusBadRequest)
+		return
+	}
 
 	// Limit the request body to 1 MB (1 << 20 bytes)
 	r.Body = http.MaxBytesReader(w, r.Body, 1<<20)
@@ -211,6 +219,11 @@ func (s *Server) handlePatchAccessibility(w http.ResponseWriter, r *http.Request
 	var input models.AccessibilityProfile
 	if err := json.NewDecoder(r.Body).Decode(&input); err != nil {
 		http.Error(w, "Payload too large or invalid JSON", http.StatusBadRequest)
+		return
+	}
+
+	if errs := validation.AccessibilityProfile(&input); len(errs) > 0 {
+		jsonResponse(w, validationError(errs), http.StatusBadRequest)
 		return
 	}
 
@@ -284,6 +297,17 @@ func (s *Server) handleReadyz(w http.ResponseWriter, r *http.Request) {
 	jsonResponse(w, map[string]string{"status": "ok"}, http.StatusOK)
 }
 
+// validationError builds the 400 response body from a slice of structural-validation errors.
+func validationError(errs []validation.FieldError) any {
+	return struct {
+		Error  string                   `json:"error"`
+		Fields []validation.FieldError  `json:"fields"`
+	}{
+		Error:  "validation failed",
+		Fields: errs,
+	}
+}
+
 // conflictError builds the 422 response body from a slice of detected conflicts.
 func conflictError(conflicts []a11y.Conflict) any {
 	type conflictItem struct {
@@ -318,19 +342,6 @@ func jsonResponse(w http.ResponseWriter, data any, code int) {
 	if _, err := w.Write(payload); err != nil {
 		slog.Error("Error writing JSON response", "error", err)
 	}
-}
-
-// parseCoord attempts to parse a string into a float64.
-// If parsing fails, it writes an HTTP 400 error to the provided ResponseWriter
-// and returns (0, false). The caller must check the boolean return value
-// before proceeding with the parsed result.
-func parseCoord(w http.ResponseWriter, val string, name string) (float64, bool) {
-	f, err := strconv.ParseFloat(val, 64)
-	if err != nil || math.IsNaN(f) || math.IsInf(f, 0) {
-		http.Error(w, "Invalid "+name, http.StatusBadRequest)
-		return 0, false
-	}
-	return f, true
 }
 
 // getEnv is a helper to read an environment variable or return a fallback value.
