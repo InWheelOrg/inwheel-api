@@ -2,17 +2,11 @@ name: Claude Code Review
 
 on:
   pull_request:
-    types: [opened]
+    types: [opened, reopened]
   workflow_dispatch:
 
 jobs:
   claude-review:
-    # Optional: Filter by PR author
-    # if: |
-    #   github.event.pull_request.user.login == 'external-contributor' ||
-    #   github.event.pull_request.user.login == 'new-developer' ||
-    #   github.event.pull_request.author_association == 'FIRST_TIME_CONTRIBUTOR'
-
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -28,12 +22,15 @@ jobs:
 
       - name: Run Claude Code Review
         id: claude-review
-        uses: anthropics/claude-code-action@v1
+        uses: anthropics/claude-code-action@567fe954a4527e81f132d87d1bdbcc94f7737434 # v1
         with:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
-          plugin_marketplaces: 'https://github.com/anthropics/claude-code.git'
-          plugins: 'code-review@claude-code-plugins'
-          prompt: '/code-review:code-review ${{ github.repository }}/pull/${{ github.event.pull_request.number }}'
-          # See https://github.com/anthropics/claude-code-action/blob/main/docs/usage.md
-          # or https://code.claude.com/docs/en/cli-reference for available options
-
+          prompt: |
+            Review this pull request for code quality, correctness, security
+            issues, and adherence to the project's CLAUDE.md guidelines.
+            Analyze the diff, then post your findings as inline review comments
+            on the specific lines where issues are found. If you find no issues
+            worth flagging, post a brief summary comment confirming that.
+          claude_args: |
+            --max-turns 20
+            --allowedTools "mcp__github_inline_comment__create_inline_comment,Bash,Read,Grep,Glob"
