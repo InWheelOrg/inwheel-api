@@ -38,7 +38,10 @@ jobs:
           go-version-file: go.mod
 
       - name: Test
-        run: go test ./...
+        run: go test -race -coverprofile=coverage.out ./...
+
+      - name: Coverage summary
+        run: go tool cover -func=coverage.out
 
   integration:
     name: Integration Tests
@@ -51,7 +54,7 @@ jobs:
           go-version-file: go.mod
 
       - name: Test
-        run: go test -tags integration -timeout 120s ./...
+        run: go test -race -tags integration -timeout 120s ./...
 
   vulncheck:
     name: Vulnerability Check
