@@ -559,3 +559,16 @@ func TestHandleGetPlace_NoParentReturnsRawData(t *testing.T) {
 		t.Error("component should not be inherited for place with no parent")
 	}
 }
+
+func TestHandleReadyz_DBReachable(t *testing.T) {
+	r := httptest.NewRequest(http.MethodGet, "/readyz", nil)
+	w := httptest.NewRecorder()
+	newTestServer().handleReadyz(w, r)
+
+	if w.Code != http.StatusOK {
+		t.Errorf("status = %d, want 200; body: %s", w.Code, w.Body.String())
+	}
+	if w.Body.String() != `{"status":"ok"}` {
+		t.Errorf("body = %q, want {\"status\":\"ok\"}", w.Body.String())
+	}
+}

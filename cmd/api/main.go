@@ -6,6 +6,7 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"log/slog"
@@ -67,6 +68,8 @@ func main() {
 	srv := &Server{db: gormDB, engine: &a11y.Engine{}}
 
 	mux := http.NewServeMux()
+	mux.HandleFunc("GET /healthz", srv.handleHealthz)
+	mux.HandleFunc("GET /readyz", srv.handleReadyz)
 	mux.HandleFunc("GET /places", srv.handleGetPlaces)
 	mux.HandleFunc("GET /places/{id}", srv.handleGetPlace)
 	mux.HandleFunc("POST /places", srv.handlePostPlace)
@@ -261,6 +264,24 @@ func (s *Server) handlePatchAccessibility(w http.ResponseWriter, r *http.Request
 	}
 
 	jsonResponse(w, result, http.StatusOK)
+}
+
+// handleHealthz is a liveness probe: returns 200 as long as the process is running.
+func (s *Server) handleHealthz(w http.ResponseWriter, r *http.Request) {
+	jsonResponse(w, map[string]string{"status": "ok"}, http.StatusOK)
+}
+
+// handleReadyz is a readiness probe: returns 200 when the DB is reachable, 503 otherwise.
+func (s *Server) handleReadyz(w http.ResponseWriter, r *http.Request) {
+	ctx, cancel := context.WithTimeout(r.Context(), 2*time.Second)
+	defer cancel()
+
+	sqlDB, err := s.db.DB()
+	if err != nil || sqlDB.PingContext(ctx) != nil {
+		jsonResponse(w, map[string]string{"status": "degraded"}, http.StatusServiceUnavailable)
+		return
+	}
+	jsonResponse(w, map[string]string{"status": "ok"}, http.StatusOK)
 }
 
 // conflictError builds the 422 response body from a slice of detected conflicts.

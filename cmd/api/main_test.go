@@ -236,6 +236,19 @@ func TestGetEnv(t *testing.T) {
 	}
 }
 
+func TestHandleHealthz(t *testing.T) {
+	r := httptest.NewRequest(http.MethodGet, "/healthz", nil)
+	w := httptest.NewRecorder()
+	(&Server{}).handleHealthz(w, r)
+
+	if w.Code != http.StatusOK {
+		t.Errorf("status = %d, want 200", w.Code)
+	}
+	if w.Body.String() != `{"status":"ok"}` {
+		t.Errorf("body = %q, want {\"status\":\"ok\"}", w.Body.String())
+	}
+}
+
 func TestHandlePostPlace_InvalidJSON(t *testing.T) {
 	r := httptest.NewRequest(http.MethodPost, "/places", bytes.NewBufferString("{bad json"))
 	w := httptest.NewRecorder()
