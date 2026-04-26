@@ -74,5 +74,12 @@ func Migrate(db *gorm.DB) error {
 		log.Printf("Warning: Failed to create spatial index: %v", err)
 	}
 
+	// Partial unique index: one active (non-revoked) key per email.
+	// AutoMigrate cannot express WHERE clauses, so this is handled explicitly.
+	partialIdx := "CREATE UNIQUE INDEX IF NOT EXISTS idx_api_keys_email_active ON api_keys (email) WHERE revoked_at IS NULL"
+	if err := db.Exec(partialIdx).Error; err != nil {
+		log.Printf("Warning: Failed to create partial unique index on api_keys: %v", err)
+	}
+
 	return nil
 }

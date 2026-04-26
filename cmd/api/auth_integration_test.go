@@ -13,6 +13,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -270,5 +271,77 @@ func TestHandlePatchAccessibility_MissingAuth(t *testing.T) {
 
 	if w.Code != http.StatusUnauthorized {
 		t.Fatalf("status = %d, want 401; body: %s", w.Code, w.Body.String())
+	}
+}
+
+// TestHandleRegister_XFFDoesNotBypassRateLimit verifies that rotating X-Forwarded-For
+// values cannot defeat the per-IP registration rate limit. All requests share the same
+// RemoteAddr, so different XFF headers must have no effect.
+func TestHandleRegister_XFFDoesNotBypassRateLimit(t *testing.T) {
+	t.Cleanup(func() { truncate(t) })
+
+	srv := &Server{
+		db:         testDB,
+		engine:     newTestServer().engine,
+		regLimiter: middleware.NewRateLimiter(rate.Every(24*time.Hour), 1),
+		keyLimiter: middleware.NewRateLimiter(rate.Every(time.Millisecond), 1000),
+	}
+
+	send := func(email, xff string) int {
+		body, _ := json.Marshal(map[string]string{"email": email})
+		r := httptest.NewRequest(http.MethodPost, "/auth/register", bytes.NewReader(body))
+		r.Header.Set("Content-Type", "application/json")
+		r.RemoteAddr = "1.2.3.4:9999"
+		if xff != "" {
+			r.Header.Set("X-Forwarded-For", xff)
+		}
+		w := httptest.NewRecorder()
+		srv.handleRegister(w, r)
+		return w.Code
+	}
+
+	if code := send("first@example.com", ""); code != http.StatusCreated {
+		t.Fatalf("first request: status = %d, want 201", code)
+	}
+	// Spoofed XFF, same RemoteAddr — must still hit the rate limit.
+	if code := send("second@example.com", "9.9.9.9"); code != http.StatusTooManyRequests {
+		t.Fatalf("second request with spoofed XFF: status = %d, want 429", code)
+	}
+}
+
+// TestHandleRegister_ConcurrentSameEmail verifies the DB-level partial unique index
+// (WHERE revoked_at IS NULL) prevents two simultaneous registrations for the same email
+// from both succeeding when the application-level check races.
+func TestHandleRegister_ConcurrentSameEmail(t *testing.T) {
+	t.Cleanup(func() { truncate(t) })
+
+	srv := newTestServer()
+	const email = "race@example.com"
+	const n = 5
+
+	codes := make([]int, n)
+	var wg sync.WaitGroup
+	wg.Add(n)
+	for i := 0; i < n; i++ {
+		go func(i int) {
+			defer wg.Done()
+			body, _ := json.Marshal(map[string]string{"email": email})
+			r := httptest.NewRequest(http.MethodPost, "/auth/register", bytes.NewReader(body))
+			r.Header.Set("Content-Type", "application/json")
+			w := httptest.NewRecorder()
+			srv.handleRegister(w, r)
+			codes[i] = w.Code
+		}(i)
+	}
+	wg.Wait()
+
+	created := 0
+	for _, code := range codes {
+		if code == http.StatusCreated {
+			created++
+		}
+	}
+	if created != 1 {
+		t.Errorf("expected exactly 1 successful registration, got %d; all codes: %v", created, codes)
 	}
 }
