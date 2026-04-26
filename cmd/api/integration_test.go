@@ -385,3 +385,177 @@ func TestHandleGetPlace_NotFound(t *testing.T) {
 		t.Errorf("status = %d, want 404", w.Code)
 	}
 }
+
+func TestHandleGetPlace_InheritsParentComponents(t *testing.T) {
+	t.Cleanup(func() { truncate(t) })
+
+	hasSpaces := true
+	parent := models.Place{
+		Name:     "Test Mall",
+		Lat:      52.5,
+		Lng:      13.4,
+		Category: models.CategoryMall,
+		Source:   "test",
+		Accessibility: &models.AccessibilityProfile{
+			OverallStatus: models.StatusAccessible,
+			Components: models.A11yComponents{
+				{Type: models.ComponentParking, OverallStatus: models.StatusAccessible, Parking: &models.ParkingProperties{HasDisabledSpaces: &hasSpaces}},
+			},
+		},
+	}
+	testDB.Create(&parent)
+
+	child := models.Place{
+		Name:     "Test Shop",
+		Lat:      52.5,
+		Lng:      13.4,
+		Category: models.CategoryShop,
+		Source:   "test",
+		ParentID: &parent.ID,
+	}
+	testDB.Create(&child)
+
+	r := httptest.NewRequest(http.MethodGet, "/places/"+child.ID, nil)
+	r.SetPathValue("id", child.ID)
+	w := httptest.NewRecorder()
+	newTestServer().handleGetPlace(w, r)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200; body: %s", w.Code, w.Body.String())
+	}
+
+	var got models.Place
+	if err := json.NewDecoder(w.Body).Decode(&got); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if got.Accessibility == nil {
+		t.Fatal("expected accessibility profile in response")
+	}
+
+	var inherited *models.A11yComponent
+	for i := range got.Accessibility.Components {
+		if got.Accessibility.Components[i].Type == models.ComponentParking {
+			inherited = &got.Accessibility.Components[i]
+			break
+		}
+	}
+	if inherited == nil {
+		t.Fatal("expected inherited parking component in effective profile")
+	}
+	if !inherited.IsInherited {
+		t.Error("parking component should be marked is_inherited=true")
+	}
+	if inherited.SourceID != parent.ID {
+		t.Errorf("source_id = %q, want %q", inherited.SourceID, parent.ID)
+	}
+}
+
+func TestHandleGetPlace_ChildOverridesParentComponent(t *testing.T) {
+	t.Cleanup(func() { truncate(t) })
+
+	parent := models.Place{
+		Name:     "Test Mall",
+		Lat:      52.5,
+		Lng:      13.4,
+		Category: models.CategoryMall,
+		Source:   "test",
+		Accessibility: &models.AccessibilityProfile{
+			OverallStatus: models.StatusAccessible,
+			Components: models.A11yComponents{
+				{Type: models.ComponentEntrance, OverallStatus: models.StatusAccessible},
+			},
+		},
+	}
+	testDB.Create(&parent)
+
+	child := models.Place{
+		Name:     "Test Shop",
+		Lat:      52.5,
+		Lng:      13.4,
+		Category: models.CategoryShop,
+		Source:   "test",
+		ParentID: &parent.ID,
+		Accessibility: &models.AccessibilityProfile{
+			OverallStatus: models.StatusInaccessible,
+			Components: models.A11yComponents{
+				{Type: models.ComponentEntrance, OverallStatus: models.StatusInaccessible},
+			},
+		},
+	}
+	testDB.Create(&child)
+
+	r := httptest.NewRequest(http.MethodGet, "/places/"+child.ID, nil)
+	r.SetPathValue("id", child.ID)
+	w := httptest.NewRecorder()
+	newTestServer().handleGetPlace(w, r)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200; body: %s", w.Code, w.Body.String())
+	}
+
+	var got models.Place
+	if err := json.NewDecoder(w.Body).Decode(&got); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if got.Accessibility == nil {
+		t.Fatal("expected accessibility profile in response")
+	}
+
+	var entranceCount int
+	for _, c := range got.Accessibility.Components {
+		if c.Type == models.ComponentEntrance {
+			entranceCount++
+			if c.IsInherited {
+				t.Error("entrance should not be inherited — child owns it")
+			}
+			if c.OverallStatus != models.StatusInaccessible {
+				t.Errorf("entrance status = %q, want inaccessible", c.OverallStatus)
+			}
+		}
+	}
+	if entranceCount != 1 {
+		t.Errorf("expected exactly 1 entrance component, got %d", entranceCount)
+	}
+}
+
+func TestHandleGetPlace_NoParentReturnsRawData(t *testing.T) {
+	t.Cleanup(func() { truncate(t) })
+
+	place := models.Place{
+		Name:     "Standalone Cafe",
+		Lat:      52.5,
+		Lng:      13.4,
+		Category: models.CategoryCafe,
+		Source:   "test",
+		Accessibility: &models.AccessibilityProfile{
+			OverallStatus: models.StatusAccessible,
+			Components: models.A11yComponents{
+				{Type: models.ComponentEntrance, OverallStatus: models.StatusAccessible},
+			},
+		},
+	}
+	testDB.Create(&place)
+
+	r := httptest.NewRequest(http.MethodGet, "/places/"+place.ID, nil)
+	r.SetPathValue("id", place.ID)
+	w := httptest.NewRecorder()
+	newTestServer().handleGetPlace(w, r)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200; body: %s", w.Code, w.Body.String())
+	}
+
+	var got models.Place
+	if err := json.NewDecoder(w.Body).Decode(&got); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if got.Accessibility == nil {
+		t.Fatal("expected accessibility profile")
+	}
+	if len(got.Accessibility.Components) != 1 {
+		t.Errorf("expected 1 component, got %d", len(got.Accessibility.Components))
+	}
+	if got.Accessibility.Components[0].IsInherited {
+		t.Error("component should not be inherited for place with no parent")
+	}
+}

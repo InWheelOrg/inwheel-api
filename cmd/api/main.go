@@ -138,6 +138,9 @@ func (s *Server) handleGetPlaces(w http.ResponseWriter, r *http.Request) {
 }
 
 // handleGetPlace returns the full details of a single place, including its accessibility profile.
+// When the place has a parent, the returned accessibility is the effective profile: the child's own
+// components plus any component types inherited from the parent that the child does not own itself.
+// Inherited components carry is_inherited=true and source_id=parent.ID.
 // Endpoint: GET /places/{id}
 func (s *Server) handleGetPlace(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
@@ -150,6 +153,16 @@ func (s *Server) handleGetPlace(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
+
+	if place.ParentID != nil {
+		var parent models.Place
+		if err := s.db.Preload("Accessibility").First(&parent, "id = ?", *place.ParentID).Error; err == nil {
+			effective := s.engine.ComputeEffectiveProfile(&place, &parent)
+			effective.PlaceID = place.ID
+			place.Accessibility = effective
+		}
+	}
+
 	jsonResponse(w, place, http.StatusOK)
 }
 
