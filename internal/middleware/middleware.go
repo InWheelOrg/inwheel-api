@@ -6,12 +6,16 @@
 package middleware
 
 import (
+	"context"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"log/slog"
+	"math"
 	"net"
 	"net/http"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -23,28 +27,34 @@ import (
 
 // RateLimiter holds per-key token buckets keyed by an arbitrary string (IP, key hash, etc.).
 // Safe for concurrent use. A background goroutine evicts idle entries every 5 minutes to
-// prevent unbounded memory growth from unique IPs or keys that never repeat.
+// cap memory growth from unique keys; it exits when the context is cancelled.
 type RateLimiter struct {
 	limiters sync.Map
 	r        rate.Limit
 	b        int
+	done     chan struct{} // closed once the eviction goroutine returns
 }
 
-// NewRateLimiter creates a RateLimiter with the given steady-state rate and burst size.
-// It starts a background goroutine to periodically evict fully-replenished (idle) entries.
-func NewRateLimiter(r rate.Limit, b int) *RateLimiter {
-	rl := &RateLimiter{r: r, b: b}
-	go rl.evictIdle()
+// NewRateLimiter creates a RateLimiter with the given rate and burst. The eviction
+// goroutine runs until ctx is cancelled.
+func NewRateLimiter(ctx context.Context, r rate.Limit, b int) *RateLimiter {
+	rl := &RateLimiter{r: r, b: b, done: make(chan struct{})}
+	go rl.evictIdle(ctx)
 	return rl
 }
 
-// evictIdle periodically removes entries whose limiter is fully replenished, indicating
-// the key has been idle long enough to have earned back all tokens.
-func (l *RateLimiter) evictIdle() {
+// evictIdle periodically removes fully-replenished entries until ctx is cancelled.
+func (l *RateLimiter) evictIdle(ctx context.Context) {
+	defer close(l.done)
 	ticker := time.NewTicker(5 * time.Minute)
 	defer ticker.Stop()
-	for range ticker.C {
-		l.sweep()
+	for {
+		select {
+		case <-ticker.C:
+			l.sweep()
+		case <-ctx.Done():
+			return
+		}
 	}
 }
 
@@ -58,6 +68,15 @@ func (l *RateLimiter) sweep() {
 	})
 }
 
+// RetryAfterSeconds returns the number of seconds until the next token is available
+// (ceil of the refill period). Use this to set the Retry-After response header.
+func (l *RateLimiter) RetryAfterSeconds() int {
+	if l.r <= 0 {
+		return 0
+	}
+	return int(math.Ceil(1 / float64(l.r)))
+}
+
 // Allow reports whether the given key has a token available.
 func (l *RateLimiter) Allow(key string) bool {
 	if v, ok := l.limiters.Load(key); ok {
@@ -67,9 +86,8 @@ func (l *RateLimiter) Allow(key string) bool {
 	return v.(*rate.Limiter).Allow()
 }
 
-// RequireAPIKey returns a handler that enforces API key authentication and per-key
-// rate limiting before delegating to next. The rate limit check runs before the DB
-// lookup to avoid unnecessary queries under a flood of valid-key requests.
+// RequireAPIKey enforces API key auth and per-key rate limiting before delegating to next.
+// Rate-limit check precedes the DB lookup; revoked keys are filtered at the DB level.
 func RequireAPIKey(db *gorm.DB, krl *RateLimiter, next http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		authHeader := r.Header.Get("Authorization")
@@ -82,16 +100,18 @@ func RequireAPIKey(db *gorm.DB, krl *RateLimiter, next http.HandlerFunc) http.Ha
 		hash := SHA256Hex(rawKey)
 
 		if !krl.Allow(hash) {
+			w.Header().Set("Retry-After", strconv.Itoa(krl.RetryAfterSeconds()))
 			jsonError(w, "rate limit exceeded", http.StatusTooManyRequests)
 			return
 		}
 
 		var apiKey models.APIKey
-		if err := db.Where("key_hash = ?", hash).First(&apiKey).Error; err != nil {
-			jsonError(w, "unauthorized", http.StatusUnauthorized)
-			return
-		}
-		if apiKey.RevokedAt != nil {
+		if err := db.Where("key_hash = ? AND revoked_at IS NULL", hash).First(&apiKey).Error; err != nil {
+			if !errors.Is(err, gorm.ErrRecordNotFound) {
+				slog.Error("auth: key lookup failed", "error", err)
+				jsonError(w, "internal server error", http.StatusInternalServerError)
+				return
+			}
 			jsonError(w, "unauthorized", http.StatusUnauthorized)
 			return
 		}

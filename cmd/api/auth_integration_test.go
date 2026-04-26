@@ -50,7 +50,7 @@ func TestHandleRegister_Success(t *testing.T) {
 	r := httptest.NewRequest(http.MethodPost, "/auth/register", bytes.NewReader(body))
 	r.Header.Set("Content-Type", "application/json")
 	w := httptest.NewRecorder()
-	newTestServer().handleRegister(w, r)
+	newTestServer(t).handleRegister(w, r)
 
 	if w.Code != http.StatusCreated {
 		t.Fatalf("status = %d, want 201; body: %s", w.Code, w.Body.String())
@@ -74,7 +74,7 @@ func TestHandleRegister_Success(t *testing.T) {
 func TestHandleRegister_DuplicateActiveKey(t *testing.T) {
 	t.Cleanup(func() { truncate(t) })
 
-	srv := newTestServer()
+	srv := newTestServer(t)
 	registerKey(t, srv, "dup@example.com")
 
 	body, _ := json.Marshal(map[string]string{"email": "dup@example.com"})
@@ -95,7 +95,7 @@ func TestHandleRegister_InvalidEmail(t *testing.T) {
 	r := httptest.NewRequest(http.MethodPost, "/auth/register", bytes.NewReader(body))
 	r.Header.Set("Content-Type", "application/json")
 	w := httptest.NewRecorder()
-	newTestServer().handleRegister(w, r)
+	newTestServer(t).handleRegister(w, r)
 
 	if w.Code != http.StatusBadRequest {
 		t.Fatalf("status = %d, want 400; body: %s", w.Code, w.Body.String())
@@ -119,11 +119,12 @@ func TestHandleRegister_IPRateLimit(t *testing.T) {
 	t.Cleanup(func() { truncate(t) })
 
 	// burst of 2: first two requests succeed, third is rate-limited
+	ctx := t.Context()
 	srv := &Server{
 		db:         testDB,
-		engine:     newTestServer().engine,
-		regLimiter: middleware.NewRateLimiter(rate.Every(24*time.Hour), 2),
-		keyLimiter: middleware.NewRateLimiter(rate.Every(time.Millisecond), 1000),
+		engine:     newTestServer(t).engine,
+		regLimiter: middleware.NewRateLimiter(ctx, rate.Every(24*time.Hour), 2),
+		keyLimiter: middleware.NewRateLimiter(ctx, rate.Every(time.Millisecond), 1000),
 	}
 
 	emails := []string{"a@example.com", "b@example.com", "c@example.com"}
@@ -151,7 +152,7 @@ func TestHandleRegister_IPRateLimit(t *testing.T) {
 func TestHandlePostPlace_WithValidKey(t *testing.T) {
 	t.Cleanup(func() { truncate(t) })
 
-	srv := newTestServer()
+	srv := newTestServer(t)
 	rawKey := registerKey(t, srv, "writer@example.com")
 
 	body, _ := json.Marshal(models.Place{
@@ -176,7 +177,7 @@ func TestHandlePostPlace_WithValidKey(t *testing.T) {
 func TestHandlePostPlace_MissingAuth(t *testing.T) {
 	t.Cleanup(func() { truncate(t) })
 
-	srv := newTestServer()
+	srv := newTestServer(t)
 	body, _ := json.Marshal(models.Place{Name: "x", Lat: 60.1, Lng: 24.9, Category: models.CategoryCafe, Rank: models.RankEstablishment})
 	r := httptest.NewRequest(http.MethodPost, "/places", bytes.NewReader(body))
 	w := httptest.NewRecorder()
@@ -199,7 +200,7 @@ func TestHandlePostPlace_MissingAuth(t *testing.T) {
 func TestHandlePostPlace_InvalidKey(t *testing.T) {
 	t.Cleanup(func() { truncate(t) })
 
-	srv := newTestServer()
+	srv := newTestServer(t)
 	body, _ := json.Marshal(models.Place{Name: "x", Lat: 60.1, Lng: 24.9, Category: models.CategoryCafe, Rank: models.RankEstablishment})
 	r := httptest.NewRequest(http.MethodPost, "/places", bytes.NewReader(body))
 	r.Header.Set("Authorization", "Bearer iwk_notavalidkey000000000000000000000000000000000000000000000000000")
@@ -215,7 +216,7 @@ func TestHandlePostPlace_InvalidKey(t *testing.T) {
 func TestHandlePostPlace_RevokedKey(t *testing.T) {
 	t.Cleanup(func() { truncate(t) })
 
-	srv := newTestServer()
+	srv := newTestServer(t)
 	rawKey := registerKey(t, srv, "revoked@example.com")
 
 	// Revoke the key directly in the DB.
@@ -237,7 +238,7 @@ func TestHandlePostPlace_RevokedKey(t *testing.T) {
 func TestHandlePatchAccessibility_WithValidKey(t *testing.T) {
 	t.Cleanup(func() { truncate(t) })
 
-	srv := newTestServer()
+	srv := newTestServer(t)
 
 	// Create a place first (directly in DB).
 	place := models.Place{Name: "A Place", Lat: 60.1, Lng: 24.9, Category: models.CategoryCafe, Rank: models.RankEstablishment}
@@ -263,7 +264,7 @@ func TestHandlePatchAccessibility_WithValidKey(t *testing.T) {
 func TestHandlePatchAccessibility_MissingAuth(t *testing.T) {
 	t.Cleanup(func() { truncate(t) })
 
-	srv := newTestServer()
+	srv := newTestServer(t)
 	r := httptest.NewRequest(http.MethodPatch, "/places/some-id/accessibility", strings.NewReader(`{"overall_status":"accessible"}`))
 	w := httptest.NewRecorder()
 
@@ -280,11 +281,12 @@ func TestHandlePatchAccessibility_MissingAuth(t *testing.T) {
 func TestHandleRegister_XFFDoesNotBypassRateLimit(t *testing.T) {
 	t.Cleanup(func() { truncate(t) })
 
+	ctx := t.Context()
 	srv := &Server{
 		db:         testDB,
-		engine:     newTestServer().engine,
-		regLimiter: middleware.NewRateLimiter(rate.Every(24*time.Hour), 1),
-		keyLimiter: middleware.NewRateLimiter(rate.Every(time.Millisecond), 1000),
+		engine:     newTestServer(t).engine,
+		regLimiter: middleware.NewRateLimiter(ctx, rate.Every(24*time.Hour), 1),
+		keyLimiter: middleware.NewRateLimiter(ctx, rate.Every(time.Millisecond), 1000),
 	}
 
 	send := func(email, xff string) int {
@@ -315,7 +317,7 @@ func TestHandleRegister_XFFDoesNotBypassRateLimit(t *testing.T) {
 func TestHandleRegister_ConcurrentSameEmail(t *testing.T) {
 	t.Cleanup(func() { truncate(t) })
 
-	srv := newTestServer()
+	srv := newTestServer(t)
 	const email = "race@example.com"
 	const n = 5
 
@@ -336,9 +338,14 @@ func TestHandleRegister_ConcurrentSameEmail(t *testing.T) {
 	wg.Wait()
 
 	created := 0
-	for _, code := range codes {
-		if code == http.StatusCreated {
+	for i, code := range codes {
+		switch code {
+		case http.StatusCreated:
 			created++
+		case http.StatusConflict:
+			// Expected: app-level pre-check or DB partial-index race loser.
+		default:
+			t.Errorf("goroutine %d: status = %d, want 201 or 409; all codes: %v", i, code, codes)
 		}
 	}
 	if created != 1 {

@@ -72,8 +72,8 @@ func main() {
 	srv := &Server{
 		db:         gormDB,
 		engine:     &a11y.Engine{},
-		regLimiter: middleware.NewRateLimiter(rate.Every(20*time.Minute), 3), // 3 registrations/hour/IP
-		keyLimiter: middleware.NewRateLimiter(rate.Every(time.Second), 60),   // 60 writes/min/key
+		regLimiter: middleware.NewRateLimiter(context.Background(), rate.Every(20*time.Minute), 3), // 3 registrations/hour/IP
+		keyLimiter: middleware.NewRateLimiter(context.Background(), rate.Every(time.Second), 60),   // 60 writes/min/key
 	}
 
 	mux := http.NewServeMux()

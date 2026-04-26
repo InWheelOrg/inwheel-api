@@ -47,7 +47,8 @@ const (
 )
 
 var (
-	uuidRegex = regexp.MustCompile(`^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$`)
+	uuidRegex  = regexp.MustCompile(`^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$`)
+	emailRegex = regexp.MustCompile(`^[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}$`)
 
 	validCategories = map[models.Category]bool{
 		models.CategoryMall: true, models.CategoryAirport: true,
@@ -151,6 +152,14 @@ func AccessibilityProfile(prof *models.AccessibilityProfile) []FieldError {
 	}
 
 	return errs
+}
+
+// Email validates that s is a syntactically well-formed email address.
+func Email(s string) []FieldError {
+	if !emailRegex.MatchString(s) {
+		return []FieldError{{Field: "email", Reason: "must be a valid email address"}}
+	}
+	return nil
 }
 
 // PlaceID validates a path-param ID is a well-formed UUID.

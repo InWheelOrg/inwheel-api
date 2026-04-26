@@ -6,6 +6,7 @@
 package middleware
 
 import (
+	"context"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -31,6 +32,23 @@ func TestClientIP_SplitsRemoteAddr(t *testing.T) {
 
 	if got := ClientIP(r); got != "10.0.0.1" {
 		t.Errorf("ClientIP = %q, want %q", got, "10.0.0.1")
+	}
+}
+
+func TestRateLimiter_RetryAfterSeconds(t *testing.T) {
+	tests := []struct {
+		r    rate.Limit
+		want int
+	}{
+		{rate.Every(20 * time.Minute), 1200}, // registration limiter
+		{rate.Every(time.Second), 1},         // key limiter
+		{rate.Every(500 * time.Millisecond), 1}, // sub-second rounds up
+	}
+	for _, tt := range tests {
+		rl := &RateLimiter{r: tt.r, b: 1}
+		if got := rl.RetryAfterSeconds(); got != tt.want {
+			t.Errorf("RetryAfterSeconds() = %d, want %d (rate %v)", got, tt.want, tt.r)
+		}
 	}
 }
 
@@ -65,6 +83,20 @@ func TestRateLimiter_Sweep_KeepsActiveEntries(t *testing.T) {
 
 	if _, ok := rl.limiters.Load("key"); !ok {
 		t.Fatal("sweep evicted an entry that still has active rate limiting")
+	}
+}
+
+// TestRateLimiter_EvictGoroutine_StopsOnContextCancel proves NewRateLimiter does not
+// leak its eviction goroutine: cancelling the context closes the internal done channel.
+func TestRateLimiter_EvictGoroutine_StopsOnContextCancel(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	rl := NewRateLimiter(ctx, rate.Every(time.Second), 1)
+	cancel()
+
+	select {
+	case <-rl.done:
+	case <-time.After(time.Second):
+		t.Fatal("eviction goroutine did not exit within 1s of context cancel")
 	}
 }
 

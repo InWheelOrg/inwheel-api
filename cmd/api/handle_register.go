@@ -10,16 +10,19 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"log/slog"
 	"net/http"
-	"regexp"
+	"strconv"
 
 	"github.com/InWheelOrg/inwheel-server/internal/middleware"
 	"github.com/InWheelOrg/inwheel-server/internal/validation"
 	"github.com/InWheelOrg/inwheel-server/pkg/models"
+	"github.com/jackc/pgx/v5/pgconn"
 	"gorm.io/gorm"
 )
 
-var emailRegex = regexp.MustCompile(`^[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}$`)
+// pgUniqueViolation is the Postgres SQLSTATE for a unique-constraint violation.
+const pgUniqueViolation = "23505"
 
 // handleRegister handles POST /auth/register.
 // It issues a new API key for the given email address. The raw key is returned
@@ -27,6 +30,7 @@ var emailRegex = regexp.MustCompile(`^[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-
 func (s *Server) handleRegister(w http.ResponseWriter, r *http.Request) {
 	ip := middleware.ClientIP(r)
 	if !s.regLimiter.Allow(ip) {
+		w.Header().Set("Retry-After", strconv.Itoa(s.regLimiter.RetryAfterSeconds()))
 		jsonResponse(w, map[string]string{"error": "rate limit exceeded"}, http.StatusTooManyRequests)
 		return
 	}
@@ -40,10 +44,8 @@ func (s *Server) handleRegister(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if !emailRegex.MatchString(req.Email) {
-		jsonResponse(w, validationError([]validation.FieldError{
-			{Field: "email", Reason: "must be a valid email address"},
-		}), http.StatusBadRequest)
+	if errs := validation.Email(req.Email); len(errs) > 0 {
+		jsonResponse(w, validationError(errs), http.StatusBadRequest)
 		return
 	}
 
@@ -54,18 +56,27 @@ func (s *Server) handleRegister(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if !errors.Is(err, gorm.ErrRecordNotFound) {
+		slog.Error("registration: lookup failed", "error", err)
 		jsonResponse(w, map[string]string{"error": "internal server error"}, http.StatusInternalServerError)
 		return
 	}
 
 	rawKey, err := generateKey()
 	if err != nil {
+		slog.Error("registration: key generation failed", "error", err)
 		jsonResponse(w, map[string]string{"error": "internal server error"}, http.StatusInternalServerError)
 		return
 	}
 
 	record := models.APIKey{Email: req.Email, KeyHash: middleware.SHA256Hex(rawKey)}
 	if err := s.db.Create(&record).Error; err != nil {
+		// Concurrent registration that lost the partial-unique-index race: surface as 409.
+		var pgErr *pgconn.PgError
+		if errors.As(err, &pgErr) && pgErr.Code == pgUniqueViolation {
+			jsonResponse(w, map[string]string{"error": "an active key already exists for this email"}, http.StatusConflict)
+			return
+		}
+		slog.Error("registration: insert failed", "error", err)
 		jsonResponse(w, map[string]string{"error": "internal server error"}, http.StatusInternalServerError)
 		return
 	}
