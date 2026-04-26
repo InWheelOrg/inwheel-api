@@ -16,10 +16,13 @@ import (
 	"net/http/httptest"
 	"os"
 	"testing"
+	"time"
 
 	"github.com/InWheelOrg/inwheel-server/internal/a11y"
+	"github.com/InWheelOrg/inwheel-server/internal/middleware"
 	"github.com/InWheelOrg/inwheel-server/internal/testhelpers"
 	"github.com/InWheelOrg/inwheel-server/pkg/models"
+	"golang.org/x/time/rate"
 	"gorm.io/gorm"
 )
 
@@ -47,11 +50,16 @@ func run(m *testing.M) int {
 // truncate clears all test data between tests to prevent state bleed.
 func truncate(t *testing.T) {
 	t.Helper()
-	testDB.Exec("TRUNCATE places, accessibility_profiles CASCADE")
+	testDB.Exec("TRUNCATE places, accessibility_profiles, api_keys CASCADE")
 }
 
 func newTestServer() *Server {
-	return &Server{db: testDB, engine: &a11y.Engine{}}
+	return &Server{
+		db:         testDB,
+		engine:     &a11y.Engine{},
+		regLimiter: middleware.NewRateLimiter(rate.Every(time.Millisecond), 1000),
+		keyLimiter: middleware.NewRateLimiter(rate.Every(time.Millisecond), 1000),
+	}
 }
 
 func TestHandlePostPlace_WithAccessibility(t *testing.T) {

@@ -64,7 +64,7 @@ func Migrate(db *gorm.DB) error {
 		return fmt.Errorf("database connection not initialized")
 	}
 
-	err := db.AutoMigrate(&models.Place{}, &models.AccessibilityProfile{})
+	err := db.AutoMigrate(&models.Place{}, &models.AccessibilityProfile{}, &models.APIKey{})
 	if err != nil {
 		return fmt.Errorf("failed to migrate database: %w", err)
 	}
