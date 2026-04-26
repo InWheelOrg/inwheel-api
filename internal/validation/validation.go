@@ -76,7 +76,7 @@ var (
 // Place validates a *models.Place for structural correctness. Returns nil if valid.
 func Place(p *models.Place) []FieldError {
 	if p == nil {
-		return []FieldError{{Field: "", Reason: "place is required"}}
+		return []FieldError{{Field: "body", Reason: "place is required"}}
 	}
 
 	var errs []FieldError
@@ -100,7 +100,7 @@ func Place(p *models.Place) []FieldError {
 		errs = append(errs, FieldError{Field: "rank", Reason: "must be 1, 2, or 3"})
 	}
 
-	if p.OSMID != 0 && p.OSMID < 0 {
+	if p.OSMID < 0 {
 		errs = append(errs, FieldError{Field: "osm_id", Reason: "must be positive"})
 	}
 
