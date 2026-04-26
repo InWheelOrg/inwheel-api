@@ -30,9 +30,10 @@ Two active binaries under `cmd/`:
 
 **Data flow:**
 1. Client submits accessibility data via API
-2. `a11y.Engine` runs synchronously: computes `AuditFlags` from component properties, then checks for conflicts between submitted `OverallStatus` and those flags
-3. Conflicts return HTTP 422 with a list of contradictions — caller must reconcile
-4. Clean data is persisted as-is
+2. `validation` runs structural checks (required fields, enum membership, numeric bounds, UUID format, query-param combos); failures return HTTP 400 with a field-level error list
+3. `a11y.Engine` runs synchronously: computes `AuditFlags` from component properties, then checks for conflicts between submitted `OverallStatus` and those flags
+4. Conflicts return HTTP 422 with a list of contradictions — caller must reconcile
+5. Clean data is persisted as-is
 
 The API is a pure data layer. It stores and returns accessibility facts; it never computes whether a place is "accessible". Clients apply their own relevance logic per user profile.
 
@@ -47,6 +48,8 @@ The API is a pure data layer. It stores and returns accessibility facts; it neve
 - `Engine.WithAuditFlags()` — populates `AuditFlags` on each component deterministically from property values (e.g. entrance width < 0.8m → `"narrow width (0.8m required)"`)
 - `Engine.DetectConflicts()` — returns conflicts where a component is marked `StatusAccessible` but carries a hard contradiction flag (step-with-no-ramp, explicitly-not-wheelchair-accessible, no-disabled-spaces); informational threshold flags never trigger this
 - `Engine.ComputeEffectiveProfile()` — resolves inherited components from parent places
+
+**`internal/validation`** — Structural request validation. Pure functions over `pkg/models` types: `Place`, `AccessibilityProfile`, `PlaceID`, `PlacesQuery`. Runs before the a11y engine; returns `[]FieldError` for handlers to render as a 400 response.
 
 **`internal/geo`** — PostGIS spatial queries (`ST_DWithin`, `ST_MakeEnvelope`)
 
