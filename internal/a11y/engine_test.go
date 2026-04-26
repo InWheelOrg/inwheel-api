@@ -127,7 +127,7 @@ func TestComputeEffectiveProfile(t *testing.T) {
 			},
 			wantStatus:    models.StatusUnknown,
 			wantCompCount: 1,
-			check: func(t *testing.T, res *models.AccessibilityProfile, parent *models.Place) {
+			check: func(t *testing.T, res *models.AccessibilityProfile, _ *models.Place) {
 				if res.Components[0].OverallStatus != models.StatusInaccessible {
 					t.Errorf("Expected child status %s to override parent, got %s", models.StatusInaccessible, res.Components[0].OverallStatus)
 				}
@@ -542,7 +542,7 @@ func TestWithAuditFlags(t *testing.T) {
 	}
 
 	// Nil profile must not panic.
-	t.Run("nil profile does not panic", func(t *testing.T) {
+	t.Run("nil profile does not panic", func(_ *testing.T) {
 		engine.WithAuditFlags(nil)
 	})
 

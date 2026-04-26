@@ -3,6 +3,7 @@
  * SPDX-License-Identifier: AGPL-3.0-only
  */
 
+// Package models defines the domain types shared across InWheel services.
 package models
 
 import (
