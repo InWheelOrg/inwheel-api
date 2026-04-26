@@ -1,0 +1,27 @@
+version: "2"
+
+linters:
+  default: none
+  enable:
+    - errcheck
+    - gocritic
+    - gosec
+    - govet
+    - ineffassign
+    - revive
+    - staticcheck
+
+  settings:
+    gocritic:
+      disabled-checks:
+        - ifElseChain  # spatial query dispatch is correctly if-else, not a switch
+    revive:
+      rules:
+        - name: exported
+          disabled: true  # project style does not require doc comments on exported consts/types
+
+  exclusions:
+    rules:
+      - path: cmd/ingestion/
+        linters:
+          - revive  # placeholder binary, not a library

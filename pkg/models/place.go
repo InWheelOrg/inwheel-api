@@ -29,15 +29,15 @@ type Category string
 
 const (
 	CategoryMall         Category = "mall"
-	CategoryAirport               = "airport"
-	CategoryTrainStation          = "train_station"
-	CategoryRestaurant            = "restaurant"
-	CategoryCafe                  = "cafe"
-	CategoryShop                  = "shop"
-	CategoryToilet                = "toilet"
-	CategoryParking               = "parking"
-	CategoryEntrance              = "entrance"
-	CategoryOther                 = "other"
+	CategoryAirport      Category = "airport"
+	CategoryTrainStation Category = "train_station"
+	CategoryRestaurant   Category = "restaurant"
+	CategoryCafe         Category = "cafe"
+	CategoryShop         Category = "shop"
+	CategoryToilet       Category = "toilet"
+	CategoryParking      Category = "parking"
+	CategoryEntrance     Category = "entrance"
+	CategoryOther        Category = "other"
 )
 
 // OSMType represents the OpenStreetMap data type.

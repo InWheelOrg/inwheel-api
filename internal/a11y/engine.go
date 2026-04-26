@@ -3,6 +3,7 @@
  * SPDX-License-Identifier: AGPL-3.0-only
  */
 
+// Package a11y implements the accessibility rule engine: audit flag computation and conflict detection.
 package a11y
 
 import (
@@ -83,7 +84,7 @@ func (e *Engine) DetectConflicts(profile *models.AccessibilityProfile) []Conflic
 // ComputeEffectiveProfile merges accessibility components from a child place and its parent.
 // Child places inherit parent components they don't own (e.g., a shop inherits a mall's parking).
 // For any component taken from the parent, IsInherited is set to true and SourceID is set to parent.ID.
-func (s *Engine) ComputeEffectiveProfile(child, parent *models.Place) *models.AccessibilityProfile {
+func (e *Engine) ComputeEffectiveProfile(child, parent *models.Place) *models.AccessibilityProfile {
 	if child == nil {
 		return nil
 	}
@@ -136,7 +137,7 @@ func hasComponent(place *models.Place, cType models.A11yComponentType) bool {
 }
 
 // WithAuditFlags performs a technical validation of each component and populates the AuditFlags field.
-func (s *Engine) WithAuditFlags(profile *models.AccessibilityProfile) {
+func (e *Engine) WithAuditFlags(profile *models.AccessibilityProfile) {
 	if profile == nil {
 		return
 	}
