@@ -16,10 +16,13 @@ import (
 	"net/http/httptest"
 	"os"
 	"testing"
+	"time"
 
 	"github.com/InWheelOrg/inwheel-server/internal/a11y"
+	"github.com/InWheelOrg/inwheel-server/internal/middleware"
 	"github.com/InWheelOrg/inwheel-server/internal/testhelpers"
 	"github.com/InWheelOrg/inwheel-server/pkg/models"
+	"golang.org/x/time/rate"
 	"gorm.io/gorm"
 )
 
@@ -47,11 +50,18 @@ func run(m *testing.M) int {
 // truncate clears all test data between tests to prevent state bleed.
 func truncate(t *testing.T) {
 	t.Helper()
-	testDB.Exec("TRUNCATE places, accessibility_profiles CASCADE")
+	testDB.Exec("TRUNCATE places, accessibility_profiles, api_keys CASCADE")
 }
 
-func newTestServer() *Server {
-	return &Server{db: testDB, engine: &a11y.Engine{}}
+func newTestServer(t *testing.T) *Server {
+	t.Helper()
+	ctx := t.Context()
+	return &Server{
+		db:         testDB,
+		engine:     &a11y.Engine{},
+		regLimiter: middleware.NewRateLimiter(ctx, rate.Every(time.Millisecond), 1000),
+		keyLimiter: middleware.NewRateLimiter(ctx, rate.Every(time.Millisecond), 1000),
+	}
 }
 
 func TestHandlePostPlace_WithAccessibility(t *testing.T) {
@@ -70,7 +80,7 @@ func TestHandlePostPlace_WithAccessibility(t *testing.T) {
 
 	r := httptest.NewRequest(http.MethodPost, "/places", bytes.NewReader(body))
 	w := httptest.NewRecorder()
-	newTestServer().handlePostPlace(w, r)
+	newTestServer(t).handlePostPlace(w, r)
 
 	if w.Code != http.StatusCreated {
 		t.Fatalf("status = %d, want 201; body: %s", w.Code, w.Body.String())
@@ -97,7 +107,7 @@ func TestHandlePostPlace_WithoutAccessibility(t *testing.T) {
 
 	r := httptest.NewRequest(http.MethodPost, "/places", bytes.NewReader(body))
 	w := httptest.NewRecorder()
-	newTestServer().handlePostPlace(w, r)
+	newTestServer(t).handlePostPlace(w, r)
 
 	if w.Code != http.StatusCreated {
 		t.Fatalf("status = %d, want 201; body: %s", w.Code, w.Body.String())
@@ -142,7 +152,7 @@ func TestHandlePostPlace_HardConflictReturns422(t *testing.T) {
 
 	r := httptest.NewRequest(http.MethodPost, "/places", bytes.NewReader(body))
 	w := httptest.NewRecorder()
-	newTestServer().handlePostPlace(w, r)
+	newTestServer(t).handlePostPlace(w, r)
 
 	if w.Code != http.StatusUnprocessableEntity {
 		t.Fatalf("status = %d, want 422; body: %s", w.Code, w.Body.String())
@@ -188,7 +198,7 @@ func TestHandlePostPlace_InformationalFlagsAllowed(t *testing.T) {
 
 	r := httptest.NewRequest(http.MethodPost, "/places", bytes.NewReader(body))
 	w := httptest.NewRecorder()
-	newTestServer().handlePostPlace(w, r)
+	newTestServer(t).handlePostPlace(w, r)
 
 	if w.Code != http.StatusCreated {
 		t.Fatalf("status = %d, want 201; body: %s", w.Code, w.Body.String())
@@ -221,7 +231,7 @@ func TestHandlePatchAccessibility_PlaceNotFound(t *testing.T) {
 	r := httptest.NewRequest(http.MethodPatch, "/places/"+nonExistentID+"/accessibility", bytes.NewReader(body))
 	r.SetPathValue("id", nonExistentID)
 	w := httptest.NewRecorder()
-	newTestServer().handlePatchAccessibility(w, r)
+	newTestServer(t).handlePatchAccessibility(w, r)
 
 	if w.Code != http.StatusNotFound {
 		t.Errorf("status = %d, want 404; body: %s", w.Code, w.Body.String())
@@ -241,7 +251,7 @@ func TestHandlePatchAccessibility_CreatePath(t *testing.T) {
 	r := httptest.NewRequest(http.MethodPatch, "/places/"+place.ID+"/accessibility", bytes.NewReader(body))
 	r.SetPathValue("id", place.ID)
 	w := httptest.NewRecorder()
-	newTestServer().handlePatchAccessibility(w, r)
+	newTestServer(t).handlePatchAccessibility(w, r)
 
 	if w.Code != http.StatusOK {
 		t.Fatalf("status = %d, want 200; body: %s", w.Code, w.Body.String())
@@ -280,7 +290,7 @@ func TestHandlePatchAccessibility_UpdatesExistingProfile(t *testing.T) {
 	r := httptest.NewRequest(http.MethodPatch, "/places/"+place.ID+"/accessibility", bytes.NewReader(body))
 	r.SetPathValue("id", place.ID)
 	w := httptest.NewRecorder()
-	newTestServer().handlePatchAccessibility(w, r)
+	newTestServer(t).handlePatchAccessibility(w, r)
 
 	if w.Code != http.StatusOK {
 		t.Fatalf("status = %d, want 200; body: %s", w.Code, w.Body.String())
@@ -321,7 +331,7 @@ func TestHandlePatchAccessibility_ConflictReturns422(t *testing.T) {
 	r := httptest.NewRequest(http.MethodPatch, "/places/"+place.ID+"/accessibility", bytes.NewReader(body))
 	r.SetPathValue("id", place.ID)
 	w := httptest.NewRecorder()
-	newTestServer().handlePatchAccessibility(w, r)
+	newTestServer(t).handlePatchAccessibility(w, r)
 
 	if w.Code != http.StatusUnprocessableEntity {
 		t.Fatalf("status = %d, want 422; body: %s", w.Code, w.Body.String())
@@ -357,7 +367,7 @@ func TestHandleGetPlace_ReturnsPlaceWithAccessibility(t *testing.T) {
 	r := httptest.NewRequest(http.MethodGet, "/places/"+place.ID, nil)
 	r.SetPathValue("id", place.ID)
 	w := httptest.NewRecorder()
-	newTestServer().handleGetPlace(w, r)
+	newTestServer(t).handleGetPlace(w, r)
 
 	if w.Code != http.StatusOK {
 		t.Fatalf("status = %d, want 200; body: %s", w.Code, w.Body.String())
@@ -379,7 +389,7 @@ func TestHandleGetPlace_NotFound(t *testing.T) {
 	r := httptest.NewRequest(http.MethodGet, "/places/"+nonExistentID, nil)
 	r.SetPathValue("id", nonExistentID)
 	w := httptest.NewRecorder()
-	newTestServer().handleGetPlace(w, r)
+	newTestServer(t).handleGetPlace(w, r)
 
 	if w.Code != http.StatusNotFound {
 		t.Errorf("status = %d, want 404", w.Code)
@@ -418,7 +428,7 @@ func TestHandleGetPlace_InheritsParentComponents(t *testing.T) {
 	r := httptest.NewRequest(http.MethodGet, "/places/"+child.ID, nil)
 	r.SetPathValue("id", child.ID)
 	w := httptest.NewRecorder()
-	newTestServer().handleGetPlace(w, r)
+	newTestServer(t).handleGetPlace(w, r)
 
 	if w.Code != http.StatusOK {
 		t.Fatalf("status = %d, want 200; body: %s", w.Code, w.Body.String())
@@ -487,7 +497,7 @@ func TestHandleGetPlace_ChildOverridesParentComponent(t *testing.T) {
 	r := httptest.NewRequest(http.MethodGet, "/places/"+child.ID, nil)
 	r.SetPathValue("id", child.ID)
 	w := httptest.NewRecorder()
-	newTestServer().handleGetPlace(w, r)
+	newTestServer(t).handleGetPlace(w, r)
 
 	if w.Code != http.StatusOK {
 		t.Fatalf("status = %d, want 200; body: %s", w.Code, w.Body.String())
@@ -539,7 +549,7 @@ func TestHandleGetPlace_NoParentReturnsRawData(t *testing.T) {
 	r := httptest.NewRequest(http.MethodGet, "/places/"+place.ID, nil)
 	r.SetPathValue("id", place.ID)
 	w := httptest.NewRecorder()
-	newTestServer().handleGetPlace(w, r)
+	newTestServer(t).handleGetPlace(w, r)
 
 	if w.Code != http.StatusOK {
 		t.Fatalf("status = %d, want 200; body: %s", w.Code, w.Body.String())
@@ -563,7 +573,7 @@ func TestHandleGetPlace_NoParentReturnsRawData(t *testing.T) {
 func TestHandleReadyz_DBReachable(t *testing.T) {
 	r := httptest.NewRequest(http.MethodGet, "/readyz", nil)
 	w := httptest.NewRecorder()
-	newTestServer().handleReadyz(w, r)
+	newTestServer(t).handleReadyz(w, r)
 
 	if w.Code != http.StatusOK {
 		t.Errorf("status = %d, want 200; body: %s", w.Code, w.Body.String())

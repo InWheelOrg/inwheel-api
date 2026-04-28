@@ -64,7 +64,7 @@ func Migrate(db *gorm.DB) error {
 		return fmt.Errorf("database connection not initialized")
 	}
 
-	err := db.AutoMigrate(&models.Place{}, &models.AccessibilityProfile{})
+	err := db.AutoMigrate(&models.Place{}, &models.AccessibilityProfile{}, &models.APIKey{})
 	if err != nil {
 		return fmt.Errorf("failed to migrate database: %w", err)
 	}
@@ -72,6 +72,13 @@ func Migrate(db *gorm.DB) error {
 	indexQuery := "CREATE INDEX IF NOT EXISTS idx_places_geog ON places USING GIST (geography(ST_Point(lng, lat)))"
 	if err := db.Exec(indexQuery).Error; err != nil {
 		log.Printf("Warning: Failed to create spatial index: %v", err)
+	}
+
+	// Partial unique index (one active key per email). Correctness constraint —
+	// fail startup if it can't be created. AutoMigrate can't express WHERE clauses.
+	partialIdx := "CREATE UNIQUE INDEX IF NOT EXISTS idx_api_keys_email_active ON api_keys (email) WHERE revoked_at IS NULL"
+	if err := db.Exec(partialIdx).Error; err != nil {
+		return fmt.Errorf("failed to create partial unique index on api_keys: %w", err)
 	}
 
 	return nil

@@ -36,6 +36,27 @@ func errorsHaveField(errs []FieldError, field string) bool {
 	return false
 }
 
+func TestEmail(t *testing.T) {
+	valid := []string{
+		"user@example.com",
+		"first.last+tag@sub.example.co",
+		"a_b-c@example.io",
+	}
+	for _, e := range valid {
+		if errs := Email(e); len(errs) != 0 {
+			t.Errorf("Email(%q) = %+v, want no errors", e, errs)
+		}
+	}
+
+	invalid := []string{"", "no-at-sign", "user@", "@example.com", "user@example", "user@.com"}
+	for _, e := range invalid {
+		errs := Email(e)
+		if len(errs) == 0 || errs[0].Field != "email" {
+			t.Errorf("Email(%q) = %+v, want error on 'email'", e, errs)
+		}
+	}
+}
+
 func TestPlace_Valid(t *testing.T) {
 	if errs := Place(validPlace()); len(errs) != 0 {
 		t.Errorf("expected no errors, got %+v", errs)

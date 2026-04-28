@@ -18,16 +18,20 @@ import (
 	"github.com/InWheelOrg/inwheel-server/internal/a11y"
 	"github.com/InWheelOrg/inwheel-server/internal/db"
 	"github.com/InWheelOrg/inwheel-server/internal/geo"
+	"github.com/InWheelOrg/inwheel-server/internal/middleware"
 	"github.com/InWheelOrg/inwheel-server/internal/validation"
 	"github.com/InWheelOrg/inwheel-server/pkg/models"
+	"golang.org/x/time/rate"
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
 )
 
 // Server handles the HTTP requests for the InWheel API.
 type Server struct {
-	db     *gorm.DB
-	engine *a11y.Engine
+	db         *gorm.DB
+	engine     *a11y.Engine
+	regLimiter *middleware.RateLimiter // per-IP limit for POST /auth/register
+	keyLimiter *middleware.RateLimiter // per-key limit for write endpoints
 }
 
 // main initializes the database connection, runs migrations, and starts the public API server.
@@ -65,15 +69,21 @@ func main() {
 		os.Exit(1)
 	}
 
-	srv := &Server{db: gormDB, engine: &a11y.Engine{}}
+	srv := &Server{
+		db:         gormDB,
+		engine:     &a11y.Engine{},
+		regLimiter: middleware.NewRateLimiter(context.Background(), rate.Every(20*time.Minute), 3), // 3 registrations/hour/IP
+		keyLimiter: middleware.NewRateLimiter(context.Background(), rate.Every(time.Second), 60),   // 60 writes/min/key
+	}
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /healthz", srv.handleHealthz)
 	mux.HandleFunc("GET /readyz", srv.handleReadyz)
 	mux.HandleFunc("GET /places", srv.handleGetPlaces)
 	mux.HandleFunc("GET /places/{id}", srv.handleGetPlace)
-	mux.HandleFunc("POST /places", srv.handlePostPlace)
-	mux.HandleFunc("PATCH /places/{id}/accessibility", srv.handlePatchAccessibility)
+	mux.HandleFunc("POST /auth/register", srv.handleRegister)
+	mux.HandleFunc("POST /places", middleware.RequireAPIKey(gormDB, srv.keyLimiter, srv.handlePostPlace))
+	mux.HandleFunc("PATCH /places/{id}/accessibility", middleware.RequireAPIKey(gormDB, srv.keyLimiter, srv.handlePatchAccessibility))
 
 	port := getEnv("PORT", "8080")
 	srvAddr := ":" + port
