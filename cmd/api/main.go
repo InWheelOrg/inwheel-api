@@ -72,7 +72,6 @@ func main() {
 	}
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
-	defer stop()
 
 	srv := &Server{
 		db:         gormDB,
@@ -114,11 +113,12 @@ func main() {
 	stop()
 	slog.Info("Shutting down server...")
 	shutdownCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-	defer cancel()
 	if err := httpServer.Shutdown(shutdownCtx); err != nil {
+		cancel()
 		slog.Error("Server shutdown failed", "error", err)
 		os.Exit(1)
 	}
+	cancel()
 }
 
 // handleGetPlaces handles requests for a list of places, supporting two types of spatial filters.
