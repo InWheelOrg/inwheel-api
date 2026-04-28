@@ -311,6 +311,66 @@ func TestHandleRegister_XFFDoesNotBypassRateLimit(t *testing.T) {
 	}
 }
 
+// --- Revocation tests ---
+
+func TestHandleRevokeKey_Success(t *testing.T) {
+	t.Cleanup(func() { truncate(t) })
+
+	srv := newTestServer(t)
+	rawKey := registerKey(t, srv, "revoke@example.com")
+
+	r := httptest.NewRequest(http.MethodDelete, "/auth/keys", nil)
+	r.Header.Set("Authorization", "Bearer "+rawKey)
+	w := httptest.NewRecorder()
+	srv.handleRevokeKey(w, r)
+
+	if w.Code != http.StatusNoContent {
+		t.Fatalf("revoke: status = %d, want 204; body: %s", w.Code, w.Body.String())
+	}
+
+	// Revoked key must no longer authenticate.
+	body, _ := json.Marshal(models.Place{Name: "X", Lat: 60.1, Lng: 24.9, Category: models.CategoryCafe, Rank: models.RankEstablishment})
+	r = httptest.NewRequest(http.MethodPost, "/places", bytes.NewReader(body))
+	r.Header.Set("Authorization", "Bearer "+rawKey)
+	w = httptest.NewRecorder()
+	middleware.RequireAPIKey(testDB, srv.keyLimiter, srv.handlePostPlace)(w, r)
+
+	if w.Code != http.StatusUnauthorized {
+		t.Errorf("revoked key: status = %d, want 401", w.Code)
+	}
+}
+
+func TestHandleRevokeKey_Unauthenticated(t *testing.T) {
+	t.Cleanup(func() { truncate(t) })
+
+	r := httptest.NewRequest(http.MethodDelete, "/auth/keys", nil)
+	w := httptest.NewRecorder()
+	newTestServer(t).handleRevokeKey(w, r)
+
+	if w.Code != http.StatusUnauthorized {
+		t.Fatalf("status = %d, want 401", w.Code)
+	}
+}
+
+func TestHandleRevokeKey_AlreadyRevoked(t *testing.T) {
+	t.Cleanup(func() { truncate(t) })
+
+	srv := newTestServer(t)
+	rawKey := registerKey(t, srv, "revoke2@example.com")
+
+	now := time.Now()
+	testDB.Model(&models.APIKey{}).Where("email = ?", "revoke2@example.com").Update("revoked_at", now)
+
+	r := httptest.NewRequest(http.MethodDelete, "/auth/keys", nil)
+	r.Header.Set("Authorization", "Bearer "+rawKey)
+	w := httptest.NewRecorder()
+	srv.handleRevokeKey(w, r)
+
+	if w.Code != http.StatusUnauthorized {
+		t.Fatalf("status = %d, want 401; body: %s", w.Code, w.Body.String())
+	}
+}
+
 // TestHandleRegister_ConcurrentSameEmail verifies the DB-level partial unique index
 // (WHERE revoked_at IS NULL) prevents two simultaneous registrations for the same email
 // from both succeeding when the application-level check races.
