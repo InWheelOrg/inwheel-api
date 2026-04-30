@@ -6,14 +6,20 @@
 package db
 
 import (
+	"embed"
+	"errors"
 	"fmt"
-	"log"
 	"time"
 
-	"github.com/InWheelOrg/inwheel-server/pkg/models"
-	"gorm.io/driver/postgres"
+	"github.com/golang-migrate/migrate/v4"
+	migratepostgres "github.com/golang-migrate/migrate/v4/database/postgres"
+	"github.com/golang-migrate/migrate/v4/source/iofs"
+	gormpostgres "gorm.io/driver/postgres"
 	"gorm.io/gorm"
 )
+
+//go:embed migrations/*.sql
+var migrationFS embed.FS
 
 // Config holds the database connection configuration.
 type Config struct {
@@ -32,7 +38,7 @@ func Connect(cfg Config) (*gorm.DB, error) {
 	dsn := fmt.Sprintf("host=%s user=%s password=%s dbname=%s port=%d sslmode=%s",
 		cfg.Host, cfg.User, cfg.Password, cfg.Name, cfg.Port, cfg.SSLMode)
 
-	db, err := gorm.Open(postgres.Open(dsn), &gorm.Config{})
+	db, err := gorm.Open(gormpostgres.Open(dsn), &gorm.Config{})
 	if err != nil {
 		return nil, fmt.Errorf("failed to connect to database: %w", err)
 	}
@@ -64,21 +70,28 @@ func Migrate(db *gorm.DB) error {
 		return fmt.Errorf("database connection not initialized")
 	}
 
-	err := db.AutoMigrate(&models.Place{}, &models.AccessibilityProfile{}, &models.APIKey{})
+	sqlDB, err := db.DB()
 	if err != nil {
-		return fmt.Errorf("failed to migrate database: %w", err)
+		return fmt.Errorf("could not get sql.DB from gorm: %w", err)
 	}
 
-	indexQuery := "CREATE INDEX IF NOT EXISTS idx_places_geog ON places USING GIST (geography(ST_Point(lng, lat)))"
-	if err := db.Exec(indexQuery).Error; err != nil {
-		log.Printf("Warning: Failed to create spatial index: %v", err)
+	sourceDriver, err := iofs.New(migrationFS, "migrations")
+	if err != nil {
+		return fmt.Errorf("could not create migration source: %w", err)
 	}
 
-	// Partial unique index (one active key per email). Correctness constraint —
-	// fail startup if it can't be created. AutoMigrate can't express WHERE clauses.
-	partialIdx := "CREATE UNIQUE INDEX IF NOT EXISTS idx_api_keys_email_active ON api_keys (email) WHERE revoked_at IS NULL"
-	if err := db.Exec(partialIdx).Error; err != nil {
-		return fmt.Errorf("failed to create partial unique index on api_keys: %w", err)
+	dbDriver, err := migratepostgres.WithInstance(sqlDB, &migratepostgres.Config{})
+	if err != nil {
+		return fmt.Errorf("could not create migration driver: %w", err)
+	}
+
+	m, err := migrate.NewWithInstance("iofs", sourceDriver, "postgres", dbDriver)
+	if err != nil {
+		return fmt.Errorf("could not initialise migrator: %w", err)
+	}
+
+	if err := m.Up(); err != nil && !errors.Is(err, migrate.ErrNoChange) {
+		return fmt.Errorf("migration failed: %w", err)
 	}
 
 	return nil
