@@ -12,7 +12,9 @@ import (
 	"log/slog"
 	"net/http"
 	"os"
+	"os/signal"
 	"strconv"
+	"syscall"
 	"time"
 
 	"github.com/InWheelOrg/inwheel-server/internal/a11y"
@@ -69,11 +71,13 @@ func main() {
 		os.Exit(1)
 	}
 
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+
 	srv := &Server{
 		db:         gormDB,
 		engine:     &a11y.Engine{},
-		regLimiter: middleware.NewRateLimiter(context.Background(), rate.Every(20*time.Minute), 3), // 3 registrations/hour/IP
-		keyLimiter: middleware.NewRateLimiter(context.Background(), rate.Every(time.Second), 60),   // 60 writes/min/key
+		regLimiter: middleware.NewRateLimiter(ctx, rate.Every(20*time.Minute), 3), // 3 registrations/hour/IP
+		keyLimiter: middleware.NewRateLimiter(ctx, rate.Every(time.Second), 60),   // 60 writes/min/key
 	}
 
 	mux := http.NewServeMux()
@@ -82,6 +86,7 @@ func main() {
 	mux.HandleFunc("GET /places", srv.handleGetPlaces)
 	mux.HandleFunc("GET /places/{id}", srv.handleGetPlace)
 	mux.HandleFunc("POST /auth/register", srv.handleRegister)
+	mux.HandleFunc("DELETE /auth/keys", srv.handleRevokeKey)
 	mux.HandleFunc("POST /places", middleware.RequireAPIKey(gormDB, srv.keyLimiter, srv.handlePostPlace))
 	mux.HandleFunc("PATCH /places/{id}/accessibility", middleware.RequireAPIKey(gormDB, srv.keyLimiter, srv.handlePatchAccessibility))
 
@@ -96,11 +101,24 @@ func main() {
 		IdleTimeout:  120 * time.Second,
 	}
 
-	slog.Info("Starting Public API", "addr", srvAddr)
-	if err := httpServer.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
-		slog.Error("HTTP server failed", "error", err)
+	go func() {
+		slog.Info("Starting Public API", "addr", srvAddr)
+		if err := httpServer.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
+			slog.Error("HTTP server failed", "error", err)
+			os.Exit(1)
+		}
+	}()
+
+	<-ctx.Done()
+	stop()
+	slog.Info("Shutting down server...")
+	shutdownCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	if err := httpServer.Shutdown(shutdownCtx); err != nil {
+		cancel()
+		slog.Error("Server shutdown failed", "error", err)
 		os.Exit(1)
 	}
+	cancel()
 }
 
 // handleGetPlaces handles requests for a list of places, supporting two types of spatial filters.
