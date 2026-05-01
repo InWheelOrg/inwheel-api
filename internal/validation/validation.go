@@ -17,6 +17,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/InWheelOrg/inwheel-server/internal/pagination"
 	"github.com/InWheelOrg/inwheel-server/pkg/models"
 )
 
@@ -231,6 +232,19 @@ func PlacesQuery(q url.Values) []FieldError {
 		}
 		if e2 == nil && e4 == nil && minLat >= maxLat {
 			errs = append(errs, FieldError{Field: "min_lat", Reason: "must be less than max_lat"})
+		}
+	}
+
+	if l := q.Get("limit"); l != "" {
+		n, err := strconv.Atoi(l)
+		if err != nil || n < 1 || n > 100 {
+			errs = append(errs, FieldError{Field: "limit", Reason: "must be an integer between 1 and 100"})
+		}
+	}
+
+	if c := q.Get("cursor"); c != "" {
+		if _, _, err := pagination.Decode(c); err != nil {
+			errs = append(errs, FieldError{Field: "cursor", Reason: "invalid cursor"})
 		}
 	}
 
