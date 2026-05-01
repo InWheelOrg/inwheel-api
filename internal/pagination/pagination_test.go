@@ -11,8 +11,8 @@ import (
 	"time"
 )
 
-func TestEncodeDecodRoundTrip(t *testing.T) {
-	ts := time.Date(2026, 5, 1, 12, 0, 0, 123456789, time.UTC)
+func TestEncodeDecodeRoundTrip(t *testing.T) {
+	ts := time.Date(2026, 5, 1, 12, 0, 0, 123456000, time.UTC)
 	id := "11111111-2222-3333-4444-555555555555"
 
 	cursor := Encode(ts, id)

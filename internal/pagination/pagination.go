@@ -4,18 +4,18 @@
  */
 
 // Package pagination provides cursor-based pagination helpers for the InWheel API.
-// Cursors are opaque base64-encoded strings encoding a timestamp and UUID.
+// Cursors are base64url-encoded but not signed — do not reuse on endpoints where
+// cursor integrity or per-user isolation matters.
 package pagination
 
 import (
 	"encoding/base64"
 	"errors"
-	"regexp"
 	"strings"
 	"time"
-)
 
-var uuidRegex = regexp.MustCompile(`^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$`)
+	"github.com/google/uuid"
+)
 
 // Page is the standard paginated response envelope returned by list endpoints.
 type Page[T any] struct {
@@ -23,9 +23,10 @@ type Page[T any] struct {
 	NextCursor string `json:"next_cursor,omitempty"`
 }
 
-// Encode produces a base64-encoded opaque cursor from a timestamp and UUID.
+// Encode produces a base64url-encoded cursor from a timestamp and UUID.
+// Truncates to µs to match PostgreSQL timestamptz precision.
 func Encode(t time.Time, id string) string {
-	raw := t.UTC().Format(time.RFC3339Nano) + "|" + id
+	raw := t.UTC().Truncate(time.Microsecond).Format(time.RFC3339Nano) + "|" + id
 	return base64.RawURLEncoding.EncodeToString([]byte(raw))
 }
 
@@ -43,7 +44,7 @@ func Decode(cursor string) (time.Time, string, error) {
 	if err != nil {
 		return time.Time{}, "", errors.New("invalid cursor timestamp")
 	}
-	if !uuidRegex.MatchString(parts[1]) {
+	if _, err := uuid.Parse(parts[1]); err != nil {
 		return time.Time{}, "", errors.New("invalid cursor id")
 	}
 	return t, parts[1], nil

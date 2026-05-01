@@ -147,8 +147,9 @@ func (s *Server) handleGetPlaces(w http.ResponseWriter, r *http.Request) {
 	scope := s.db.Preload("Accessibility").Order("updated_at DESC, id ASC").Limit(limit + 1)
 
 	if c := q.Get("cursor"); c != "" {
-		cursorTS, cursorID, _ := pagination.Decode(c) // already validated
-		scope = scope.Where("updated_at < ? OR (updated_at = ? AND id > ?)", cursorTS, cursorTS, cursorID)
+		if cursorTS, cursorID, err := pagination.Decode(c); err == nil {
+			scope = scope.Where("places.updated_at < ? OR (places.updated_at = ? AND places.id > ?)", cursorTS, cursorTS, cursorID)
+		}
 	}
 
 	places := make([]models.Place, 0)
