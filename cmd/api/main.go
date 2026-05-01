@@ -21,6 +21,7 @@ import (
 	"github.com/InWheelOrg/inwheel-server/internal/db"
 	"github.com/InWheelOrg/inwheel-server/internal/geo"
 	"github.com/InWheelOrg/inwheel-server/internal/middleware"
+	"github.com/InWheelOrg/inwheel-server/internal/pagination"
 	"github.com/InWheelOrg/inwheel-server/internal/validation"
 	"github.com/InWheelOrg/inwheel-server/pkg/models"
 	"golang.org/x/time/rate"
@@ -121,13 +122,15 @@ func main() {
 	cancel()
 }
 
-// handleGetPlaces handles requests for a list of places, supporting two types of spatial filters.
+// handleGetPlaces lists places with cursor-based pagination.
 //
-// If 'lng', 'lat', and 'radius' are provided, it performs a circular proximity search.
-// If 'min_lng', 'min_lat', 'max_lng', and 'max_lat' are provided, it performs a bounding box search.
+// Supports three query modes (validated before this point):
+//   - Proximity: lng, lat, radius
+//   - Bounding box: min_lng, min_lat, max_lng, max_lat
+//   - Default: most recently updated places
 //
-// If no spatial parameters are present, it defaults to returning the most recently updated 100 places.
-// Returns 400 with a structured field-error list if any query param is malformed or out of bounds.
+// Pagination params: limit (default 20, max 100), cursor (opaque, from a prior response).
+// Response: {"data": [...], "next_cursor": "..."} — next_cursor absent on the last page.
 func (s *Server) handleGetPlaces(w http.ResponseWriter, r *http.Request) {
 	q := r.URL.Query()
 	if errs := validation.PlacesQuery(q); len(errs) > 0 {
@@ -135,7 +138,21 @@ func (s *Server) handleGetPlaces(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	var places []models.Place
+	limit := 20
+	if l := q.Get("limit"); l != "" {
+		limit, _ = strconv.Atoi(l)
+	}
+
+	// Fetch one extra to know whether a next page exists.
+	scope := s.db.Preload("Accessibility").Order("updated_at DESC, id ASC").Limit(limit + 1)
+
+	if c := q.Get("cursor"); c != "" {
+		if cursorTS, cursorID, err := pagination.Decode(c); err == nil {
+			scope = scope.Where("places.updated_at < ? OR (places.updated_at = ? AND places.id > ?)", cursorTS, cursorTS, cursorID)
+		}
+	}
+
+	places := make([]models.Place, 0)
 	var err error
 
 	switch {
@@ -143,15 +160,15 @@ func (s *Server) handleGetPlaces(w http.ResponseWriter, r *http.Request) {
 		lng, _ := strconv.ParseFloat(q.Get("lng"), 64)
 		lat, _ := strconv.ParseFloat(q.Get("lat"), 64)
 		radius, _ := strconv.ParseFloat(q.Get("radius"), 64)
-		places, err = geo.FindNearbyPlaces(s.db, lng, lat, radius)
+		places, err = geo.FindNearbyPlaces(scope, lng, lat, radius)
 	case q.Get("min_lng") != "":
 		minLng, _ := strconv.ParseFloat(q.Get("min_lng"), 64)
 		minLat, _ := strconv.ParseFloat(q.Get("min_lat"), 64)
 		maxLng, _ := strconv.ParseFloat(q.Get("max_lng"), 64)
 		maxLat, _ := strconv.ParseFloat(q.Get("max_lat"), 64)
-		places, err = geo.FindPlacesInBoundingBox(s.db, minLng, minLat, maxLng, maxLat)
+		places, err = geo.FindPlacesInBoundingBox(scope, minLng, minLat, maxLng, maxLat)
 	default:
-		err = s.db.Preload("Accessibility").Order("updated_at DESC").Limit(100).Find(&places).Error
+		err = scope.Find(&places).Error
 	}
 
 	if err != nil {
@@ -159,7 +176,14 @@ func (s *Server) handleGetPlaces(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	jsonResponse(w, places, http.StatusOK)
+	var nextCursor string
+	if len(places) > limit {
+		places = places[:limit]
+		last := places[len(places)-1]
+		nextCursor = pagination.Encode(last.UpdatedAt, last.ID)
+	}
+
+	jsonResponse(w, pagination.Page[models.Place]{Data: places, NextCursor: nextCursor}, http.StatusOK)
 }
 
 // handleGetPlace returns the full details of a single place, including its accessibility profile.

@@ -25,10 +25,32 @@ Child places inherit accessibility components from their parent for any componen
 
 | Method | Path | Description |
 |---|---|---|
-| `GET` | `/places` | List places. Supports proximity (`lat`, `lng`, `radius`) and bounding box (`min_lng`, `min_lat`, `max_lng`, `max_lat`) |
+| `GET` | `/places` | List places with cursor-based pagination. Supports proximity (`lat`, `lng`, `radius`) and bounding box (`min_lng`, `min_lat`, `max_lng`, `max_lat`) filters |
 | `GET` | `/places/{id}` | Get a single place with its accessibility profile |
 | `POST` | `/places` | Create a place (with optional accessibility data) |
 | `PATCH` | `/places/{id}/accessibility` | Update or create an accessibility profile |
+
+### GET /places — query parameters
+
+| Parameter | Type | Default | Description |
+|---|---|---|---|
+| `limit` | integer | `20` | Number of results per page. Range: 1–100 |
+| `cursor` | string | — | Opaque pagination cursor from a prior response's `next_cursor` field |
+| `lng`, `lat`, `radius` | float | — | Proximity filter: centre point and radius in metres (max 50 000) |
+| `min_lng`, `min_lat`, `max_lng`, `max_lat` | float | — | Bounding box filter |
+
+`lng/lat/radius` and the bounding-box params are mutually exclusive. Proximity and bounding-box modes both support `limit` and `cursor`.
+
+**Response shape:**
+
+```json
+{
+  "data": [ /* array of Place objects */ ],
+  "next_cursor": "base64-encoded-cursor"
+}
+```
+
+`next_cursor` is omitted when there are no further pages.
 
 ## Running with Docker Compose
 

@@ -6,6 +6,7 @@
 package validation
 
 import (
+	"encoding/base64"
 	"math"
 	"net/url"
 	"strings"
@@ -13,6 +14,10 @@ import (
 
 	"github.com/InWheelOrg/inwheel-server/pkg/models"
 )
+
+func b64Enc(b []byte) string {
+	return base64.RawURLEncoding.EncodeToString(b)
+}
 
 func ptrFloat(v float64) *float64 { return &v }
 func ptrInt(v int) *int            { return &v }
@@ -267,6 +272,77 @@ func TestPlacesQuery(t *testing.T) {
 			gotValid := len(errs) == 0
 			if gotValid != tt.valid {
 				t.Errorf("query=%q valid=%v, want %v; errs=%+v", tt.query, gotValid, tt.valid, errs)
+			}
+		})
+	}
+}
+
+func TestPlacesQuery_LimitParam(t *testing.T) {
+	tests := []struct {
+		name    string
+		query   string
+		wantErr bool
+		field   string
+	}{
+		{"no limit", "", false, ""},
+		{"limit 1", "limit=1", false, ""},
+		{"limit 20", "limit=20", false, ""},
+		{"limit 100", "limit=100", false, ""},
+		{"limit 0", "limit=0", true, "limit"},
+		{"limit negative", "limit=-1", true, "limit"},
+		{"limit 101", "limit=101", true, "limit"},
+		{"limit non-integer", "limit=abc", true, "limit"},
+		{"limit float", "limit=1.5", true, "limit"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			q, _ := url.ParseQuery(tt.query)
+			errs := PlacesQuery(q)
+			if tt.wantErr {
+				if !errorsHaveField(errs, tt.field) {
+					t.Errorf("expected error on %q field, got %+v", tt.field, errs)
+				}
+			} else if len(errs) != 0 {
+				t.Errorf("expected no errors, got %+v", errs)
+			}
+		})
+	}
+}
+
+func TestPlacesQuery_CursorParam(t *testing.T) {
+	const validTS = "2026-05-01T12:00:00Z"
+	const validID = "11111111-2222-3333-4444-555555555555"
+
+	b64 := func(s string) string {
+		return b64Enc([]byte(s))
+	}
+
+	tests := []struct {
+		name    string
+		cursor  string
+		wantErr bool
+	}{
+		{"no cursor", "", false},
+		{"invalid base64", "!!!!", true},
+		{"no pipe separator", b64("no-pipe-here"), true},
+		{"bad timestamp", b64("not-a-time|" + validID), true},
+		{"bad uuid", b64(validTS + "|not-a-uuid"), true},
+		{"valid cursor", b64(validTS + "|" + validID), false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var rawQuery string
+			if tt.cursor != "" {
+				rawQuery = "cursor=" + url.QueryEscape(tt.cursor)
+			}
+			q, _ := url.ParseQuery(rawQuery)
+			errs := PlacesQuery(q)
+			if tt.wantErr {
+				if !errorsHaveField(errs, "cursor") {
+					t.Errorf("expected error on cursor field, got %+v", errs)
+				}
+			} else if errorsHaveField(errs, "cursor") {
+				t.Errorf("expected no cursor error, got %+v", errs)
 			}
 		})
 	}
