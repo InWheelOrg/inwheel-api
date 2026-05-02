@@ -1,0 +1,621 @@
+openapi: "3.0.3"
+info:
+  title: InWheel API
+  version: "1.0.0"
+  description: |
+    Public REST API for the InWheel accessibility platform.
+    All data endpoints are versioned under /v1/.
+    Probe endpoints (/healthz, /readyz) are unversioned.
+
+servers:
+  - url: /v1
+
+security: []  # most endpoints are public; overridden per-operation
+
+components:
+
+  securitySchemes:
+    ApiKeyAuth:
+      type: apiKey
+      in: header
+      name: X-API-Key
+
+  schemas:
+
+    # ── Enum helpers ──────────────────────────────────────────────────────────
+
+    A11yStatus:
+      type: string
+      enum: [accessible, limited, inaccessible, unknown]
+
+    A11yComponentType:
+      type: string
+      enum: [entrance, restroom, parking, elevator, other]
+
+    Category:
+      type: string
+      enum:
+        - mall
+        - airport
+        - train_station
+        - restaurant
+        - cafe
+        - shop
+        - toilet
+        - parking
+        - entrance
+        - other
+
+    OSMType:
+      type: string
+      enum: [node, way, relation]
+
+    # ── Domain types — reuse existing Go structs via x-go-type ───────────────
+    # x-go-type tells oapi-codegen "don't generate a new struct, use this one".
+    # The spec schema still drives middleware validation; the Go type is imported.
+
+    EntranceProperties:
+      x-go-type: models.EntranceProperties
+      x-go-type-import:
+        name: models
+        path: github.com/InWheelOrg/inwheel-server/pkg/models
+      type: object
+      properties:
+        width:
+          type: number
+          format: double
+          minimum: 0
+          maximum: 10
+        has_ramp:
+          type: boolean
+        is_automatic:
+          type: boolean
+        has_step:
+          type: boolean
+        step_height:
+          type: number
+          format: double
+          minimum: 0
+          maximum: 1
+
+    RestroomProperties:
+      x-go-type: models.RestroomProperties
+      x-go-type-import:
+        name: models
+        path: github.com/InWheelOrg/inwheel-server/pkg/models
+      type: object
+      properties:
+        wheelchair_accessible:
+          type: boolean
+        grab_rails:
+          type: boolean
+        changing_table:
+          type: boolean
+        door_width:
+          type: number
+          format: double
+          minimum: 0
+          maximum: 10
+
+    ParkingProperties:
+      x-go-type: models.ParkingProperties
+      x-go-type-import:
+        name: models
+        path: github.com/InWheelOrg/inwheel-server/pkg/models
+      type: object
+      properties:
+        has_disabled_spaces:
+          type: boolean
+        count:
+          type: integer
+          minimum: 0
+          maximum: 10000
+
+    ElevatorProperties:
+      x-go-type: models.ElevatorProperties
+      x-go-type-import:
+        name: models
+        path: github.com/InWheelOrg/inwheel-server/pkg/models
+      type: object
+      properties:
+        width:
+          type: number
+          format: double
+          minimum: 0
+          maximum: 10
+        depth:
+          type: number
+          format: double
+          minimum: 0
+          maximum: 10
+        braille:
+          type: boolean
+        audio:
+          type: boolean
+
+    A11yComponent:
+      x-go-type: models.A11yComponent
+      x-go-type-import:
+        name: models
+        path: github.com/InWheelOrg/inwheel-server/pkg/models
+      type: object
+      required: [type]
+      properties:
+        type:
+          $ref: "#/components/schemas/A11yComponentType"
+        is_inherited:
+          type: boolean
+        source_id:
+          type: string
+          format: uuid
+        overall_status:
+          $ref: "#/components/schemas/A11yStatus"
+        audit_flags:
+          type: array
+          items:
+            type: string
+        entrance:
+          $ref: "#/components/schemas/EntranceProperties"
+        restroom:
+          $ref: "#/components/schemas/RestroomProperties"
+        parking:
+          $ref: "#/components/schemas/ParkingProperties"
+        elevator:
+          $ref: "#/components/schemas/ElevatorProperties"
+        metadata:
+          type: object
+          additionalProperties: true
+
+    AccessibilityProfile:
+      x-go-type: models.AccessibilityProfile
+      x-go-type-import:
+        name: models
+        path: github.com/InWheelOrg/inwheel-server/pkg/models
+      type: object
+      required: [overall_status]
+      properties:
+        id:
+          type: string
+          format: uuid
+          readOnly: true
+        place_id:
+          type: string
+          format: uuid
+          readOnly: true
+        overall_status:
+          $ref: "#/components/schemas/A11yStatus"
+        components:
+          type: array
+          items:
+            $ref: "#/components/schemas/A11yComponent"
+        updated_at:
+          type: string
+          format: date-time
+          readOnly: true
+
+    Place:
+      x-go-type: models.Place
+      x-go-type-import:
+        name: models
+        path: github.com/InWheelOrg/inwheel-server/pkg/models
+      type: object
+      required: [name, lat, lng, category]
+      properties:
+        id:
+          type: string
+          format: uuid
+          readOnly: true
+        osm_id:
+          type: integer
+          format: int64
+          minimum: 0
+        osm_type:
+          $ref: "#/components/schemas/OSMType"
+        name:
+          type: string
+          minLength: 1
+          maxLength: 256
+        lng:
+          type: number
+          format: double
+          minimum: -180
+          maximum: 180
+        lat:
+          type: number
+          format: double
+          minimum: -90
+          maximum: 90
+        category:
+          $ref: "#/components/schemas/Category"
+        rank:
+          type: integer
+          enum: [1, 2, 3]
+        parent_id:
+          type: string
+          format: uuid
+        accessibility:
+          $ref: "#/components/schemas/AccessibilityProfile"
+        tags:
+          type: object
+          additionalProperties:
+            type: string
+        source:
+          type: string
+          maxLength: 64
+        created_at:
+          type: string
+          format: date-time
+          readOnly: true
+        updated_at:
+          type: string
+          format: date-time
+          readOnly: true
+
+    # ── API-specific response envelopes ───────────────────────────────────────
+
+    PlacePage:
+      type: object
+      required: [data]
+      properties:
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/Place"
+        next_cursor:
+          type: string
+          description: >
+            Opaque cursor for the next page. Absent when this is the last page.
+            Re-send all filter params unchanged on each subsequent request.
+
+    # ── Error shapes ─────────────────────────────────────────────────────────
+
+    FieldError:
+      type: object
+      required: [field, reason]
+      properties:
+        field:
+          type: string
+        reason:
+          type: string
+
+    ValidationError:
+      type: object
+      required: [error, fields]
+      properties:
+        error:
+          type: string
+          example: "validation failed"
+        fields:
+          type: array
+          items:
+            $ref: "#/components/schemas/FieldError"
+
+    ConflictItem:
+      type: object
+      required: [component, reason]
+      properties:
+        component:
+          type: string
+        reason:
+          type: string
+
+    ConflictError:
+      type: object
+      required: [error, conflicts]
+      properties:
+        error:
+          type: string
+          example: "accessibility data contains conflicts"
+        conflicts:
+          type: array
+          items:
+            $ref: "#/components/schemas/ConflictItem"
+
+    ErrorResponse:
+      type: object
+      required: [error]
+      properties:
+        error:
+          type: string
+
+    # ── Auth schemas ──────────────────────────────────────────────────────────
+
+    RegisterRequest:
+      type: object
+      required: [email]
+      properties:
+        email:
+          type: string
+          format: email
+
+    RegisterResponse:
+      type: object
+      required: [api_key, email, created_at]
+      properties:
+        api_key:
+          type: string
+          description: Raw API key shown exactly once. Store it securely.
+        email:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+
+paths:
+
+  # ── Places ────────────────────────────────────────────────────────────────
+
+  /places:
+    get:
+      operationId: listPlaces
+      summary: List places with cursor-based pagination
+      description: |
+        Returns a page of places ordered by (updated_at DESC, id ASC).
+        Supports three modes (mutually exclusive):
+          - **Proximity**: `lng`, `lat`, `radius` — all three required together
+          - **Bounding box**: `min_lng`, `min_lat`, `max_lng`, `max_lat` — all four required together
+          - **Default**: most recently updated places
+        Re-send identical filter params on every subsequent page.
+      parameters:
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 20
+        - name: cursor
+          in: query
+          schema:
+            type: string
+        - name: lng
+          in: query
+          schema:
+            type: number
+            format: double
+            minimum: -180
+            maximum: 180
+        - name: lat
+          in: query
+          schema:
+            type: number
+            format: double
+            minimum: -90
+            maximum: 90
+        - name: radius
+          in: query
+          schema:
+            type: number
+            format: double
+            minimum: 0
+            exclusiveMinimum: true
+            maximum: 50000
+        - name: min_lng
+          in: query
+          schema:
+            type: number
+            format: double
+            minimum: -180
+            maximum: 180
+        - name: min_lat
+          in: query
+          schema:
+            type: number
+            format: double
+            minimum: -90
+            maximum: 90
+        - name: max_lng
+          in: query
+          schema:
+            type: number
+            format: double
+            minimum: -180
+            maximum: 180
+        - name: max_lat
+          in: query
+          schema:
+            type: number
+            format: double
+            minimum: -90
+            maximum: 90
+      responses:
+        "200":
+          description: Paginated list of places
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PlacePage"
+        "400":
+          description: Invalid query parameters
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ValidationError"
+
+    post:
+      operationId: createPlace
+      summary: Create a place
+      description: Creates a new place. Accessibility data may be included inline.
+      security:
+        - ApiKeyAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/Place"
+      responses:
+        "201":
+          description: Place created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Place"
+        "400":
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ValidationError"
+        "401":
+          description: Missing or invalid API key
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "422":
+          description: Accessibility data contains conflicts
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ConflictError"
+
+  /places/{id}:
+    get:
+      operationId: getPlace
+      summary: Get a single place
+      description: |
+        Returns a place with its effective accessibility profile.
+        For places with a parent, components are inherited from the parent
+        for any component type the child does not define itself.
+        Inherited components carry `is_inherited: true` and `source_id` of the parent.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: Place found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Place"
+        "400":
+          description: Invalid UUID format
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ValidationError"
+        "404":
+          description: Place not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /places/{id}/accessibility:
+    patch:
+      operationId: patchPlaceAccessibility
+      summary: Update or create an accessibility profile
+      description: |
+        Upserts the accessibility profile for the given place.
+        Audit flags are computed from submitted component properties.
+        Returns 422 if any component's status directly contradicts its audit flags.
+      security:
+        - ApiKeyAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AccessibilityProfile"
+      responses:
+        "200":
+          description: Accessibility profile updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AccessibilityProfile"
+        "400":
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ValidationError"
+        "401":
+          description: Missing or invalid API key
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Place not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "422":
+          description: Accessibility data contains conflicts
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ConflictError"
+
+  # ── Auth ─────────────────────────────────────────────────────────────────
+
+  /auth/register:
+    post:
+      operationId: register
+      summary: Register and receive an API key
+      description: |
+        Creates an API key for the given email address.
+        The raw key is returned exactly once — store it immediately.
+        Rate-limited to 3 registrations per IP per hour.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RegisterRequest"
+      responses:
+        "201":
+          description: API key created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RegisterResponse"
+        "400":
+          description: Invalid email
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ValidationError"
+        "409":
+          description: Active key already exists for this email
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "429":
+          description: Rate limit exceeded
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /auth/keys:
+    delete:
+      operationId: revokeKey
+      summary: Revoke the authenticated API key
+      description: Revokes the key used to authenticate this request.
+      security:
+        - ApiKeyAuth: []
+      responses:
+        "204":
+          description: Key revoked
+        "401":
+          description: Missing or invalid API key
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"

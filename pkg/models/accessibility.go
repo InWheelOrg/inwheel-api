@@ -41,15 +41,15 @@ const (
 // AccessibilityProfile summarizes the accessibility of a place.
 type AccessibilityProfile struct {
 	// ID is the unique identifier for the profile.
-	ID string `json:"id" gorm:"primaryKey;type:uuid;default:gen_random_uuid()"`
+	ID string `json:"id,omitzero" gorm:"primaryKey;type:uuid;default:gen_random_uuid()"`
 	// PlaceID is the identifier of the related place.
-	PlaceID string `json:"place_id" gorm:"uniqueIndex;type:uuid"`
+	PlaceID string `json:"place_id,omitzero" gorm:"uniqueIndex;type:uuid"`
 	// OverallStatus is the client-submitted accessibility rating, validated against component flags on write.
 	OverallStatus A11yStatus `json:"overall_status"`
 	// Components are the individual accessibility features (entrance, etc).
 	Components A11yComponents `json:"components,omitzero" gorm:"type:jsonb"`
 	// UpdatedAt is the timestamp when the profile was last updated.
-	UpdatedAt time.Time `json:"updated_at"`
+	UpdatedAt time.Time `json:"updated_at,omitzero"`
 }
 
 // A11yComponent represents a modular accessibility feature.
@@ -59,7 +59,7 @@ type A11yComponent struct {
 	// IsInherited is true if the component data is inherited from a parent place.
 	IsInherited bool `json:"is_inherited"`
 	// SourceID is the ID of the Place that owns this specific data.
-	SourceID string `json:"source_id"`
+	SourceID string `json:"source_id,omitzero"`
 	// OverallStatus is the summary rating of this specific component.
 	OverallStatus A11yStatus `json:"overall_status"`
 	// AuditFlags contains technical violations detected.
