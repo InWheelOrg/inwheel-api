@@ -13,9 +13,7 @@ package validation
 import (
 	"encoding/json"
 	"fmt"
-	"net/url"
 	"regexp"
-	"strconv"
 	"strings"
 
 	"github.com/InWheelOrg/inwheel-server/internal/pagination"
@@ -73,20 +71,31 @@ func Place(p *models.Place) []FieldError {
 	return errs
 }
 
+// PlacesQueryParams holds the typed query parameters for GET /places.
+// It mirrors the oapi-codegen–generated ListPlacesParams but lives in this
+// package to avoid an upward import dependency on internal/api/v1.
+type PlacesQueryParams struct {
+	Lng    *float64
+	Lat    *float64
+	Radius *float64
+	MinLng *float64
+	MinLat *float64
+	MaxLng *float64
+	MaxLat *float64
+	Cursor *string
+}
+
 // PlacesQuery validates constraints on GET /places query params that OpenAPI
 // cannot express: mutual exclusivity of proximity vs bbox param groups,
 // bounding-box ordering (min < max), and cursor internal format.
-func PlacesQuery(q url.Values) []FieldError {
-	circular := []string{q.Get("lng"), q.Get("lat"), q.Get("radius")}
-	bbox := []string{q.Get("min_lng"), q.Get("min_lat"), q.Get("max_lng"), q.Get("max_lat")}
+func PlacesQuery(p PlacesQueryParams) []FieldError {
+	circularPresent := countNonNilFloats(p.Lng, p.Lat, p.Radius)
+	bboxPresent := countNonNilFloats(p.MinLng, p.MinLat, p.MaxLng, p.MaxLat)
 
-	circularPresent := nonEmptyCount(circular)
-	bboxPresent := nonEmptyCount(bbox)
-
-	if circularPresent != 0 && circularPresent != len(circular) {
+	if circularPresent != 0 && circularPresent != 3 {
 		return []FieldError{{Field: "query", Reason: "lng, lat, and radius must all be provided together"}}
 	}
-	if bboxPresent != 0 && bboxPresent != len(bbox) {
+	if bboxPresent != 0 && bboxPresent != 4 {
 		return []FieldError{{Field: "query", Reason: "min_lng, min_lat, max_lng, and max_lat must all be provided together"}}
 	}
 	if circularPresent > 0 && bboxPresent > 0 {
@@ -95,26 +104,17 @@ func PlacesQuery(q url.Values) []FieldError {
 
 	var errs []FieldError
 
-	if bboxPresent == len(bbox) {
-		minLng, e1 := strconv.ParseFloat(q.Get("min_lng"), 64)
-		minLat, e2 := strconv.ParseFloat(q.Get("min_lat"), 64)
-		maxLng, e3 := strconv.ParseFloat(q.Get("max_lng"), 64)
-		maxLat, e4 := strconv.ParseFloat(q.Get("max_lat"), 64)
-
-		if e1 == nil && e3 == nil && minLng >= maxLng {
+	if bboxPresent == 4 {
+		if *p.MinLng >= *p.MaxLng {
 			errs = append(errs, FieldError{Field: "min_lng", Reason: "must be less than max_lng"})
 		}
-		if e2 == nil && e4 == nil && minLat >= maxLat {
+		if *p.MinLat >= *p.MaxLat {
 			errs = append(errs, FieldError{Field: "min_lat", Reason: "must be less than max_lat"})
 		}
-		_ = e1
-		_ = e2
-		_ = e3
-		_ = e4
 	}
 
-	if c := q.Get("cursor"); c != "" {
-		if _, _, err := pagination.Decode(c); err != nil {
+	if p.Cursor != nil {
+		if _, _, err := pagination.Decode(*p.Cursor); err != nil {
 			errs = append(errs, FieldError{Field: "cursor", Reason: "invalid cursor"})
 		}
 	}
@@ -155,10 +155,10 @@ func validateMetadata(md map[string]any) []FieldError {
 	return nil
 }
 
-func nonEmptyCount(ss []string) int {
+func countNonNilFloats(ptrs ...*float64) int {
 	n := 0
-	for _, s := range ss {
-		if s != "" {
+	for _, p := range ptrs {
+		if p != nil {
 			n++
 		}
 	}
