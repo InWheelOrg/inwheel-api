@@ -80,6 +80,10 @@ type Place struct {
 	Tags PlaceTags `json:"tags,omitzero" gorm:"type:jsonb"`
 	// Source indicates where the data originated (e.g., "osm").
 	Source string `json:"source,omitzero"`
+	// SubmittedBy is the ID of the API key that last wrote this record. Internal only.
+	SubmittedBy *string `json:"-" gorm:"type:uuid"`
+	// SubmittedAt is the timestamp of the last submission.
+	SubmittedAt *time.Time `json:"submitted_at,omitzero"`
 	// CreatedAt is the timestamp when the place was created.
 	CreatedAt time.Time `json:"created_at,omitzero"`
 	// UpdatedAt is the timestamp when the place was last updated.
