@@ -48,6 +48,10 @@ type AccessibilityProfile struct {
 	OverallStatus A11yStatus `json:"overall_status"`
 	// Components are the individual accessibility features (entrance, etc).
 	Components A11yComponents `json:"components,omitzero" gorm:"type:jsonb"`
+	// SubmittedBy is the ID of the API key that last wrote this record. Internal only.
+	SubmittedBy *string `json:"-" gorm:"type:uuid"`
+	// SubmittedAt is the timestamp of the last submission.
+	SubmittedAt *time.Time `json:"submitted_at,omitzero"`
 	// UpdatedAt is the timestamp when the profile was last updated.
 	UpdatedAt time.Time `json:"updated_at,omitzero"`
 }

@@ -192,6 +192,10 @@ components:
           type: string
           format: date-time
           readOnly: true
+        submitted_at:
+          type: string
+          format: date-time
+          readOnly: true
 
     Place:
       x-go-type: models.Place
@@ -247,6 +251,10 @@ components:
           format: date-time
           readOnly: true
         updated_at:
+          type: string
+          format: date-time
+          readOnly: true
+        submitted_at:
           type: string
           format: date-time
           readOnly: true

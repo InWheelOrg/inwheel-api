@@ -20,6 +20,7 @@ import (
 	apispec "github.com/InWheelOrg/inwheel-server/api"
 	"github.com/InWheelOrg/inwheel-server/internal/a11y"
 	apiv1 "github.com/InWheelOrg/inwheel-server/internal/api/v1"
+	"github.com/InWheelOrg/inwheel-server/internal/audit"
 	"github.com/InWheelOrg/inwheel-server/internal/db"
 	"github.com/InWheelOrg/inwheel-server/internal/geo"
 	"github.com/InWheelOrg/inwheel-server/internal/middleware"
@@ -142,7 +143,7 @@ func main() {
 	mux.HandleFunc("GET /openapi.yaml", srv.handleOpenAPISpec)
 	mux.Handle("/v1/", v1Handler)
 
-	finalHandler := http.Handler(mux)
+	finalHandler := middleware.RequestLogger(http.Handler(mux))
 
 	port := getEnv("PORT", "8080")
 	httpServer := &http.Server{
@@ -242,8 +243,19 @@ func (s *Server) CreatePlace(ctx context.Context, request apiv1.CreatePlaceReque
 		return apiv1.CreatePlace400JSONResponse(validationError(errs)), nil
 	}
 
+	now := time.Now()
+	keyID := middleware.APIKeyIDFromCtx(ctx)
+	if keyID != "" {
+		place.SubmittedBy = &keyID
+	}
+	place.SubmittedAt = &now
+
 	if place.Accessibility != nil {
-		place.Accessibility.UpdatedAt = time.Now()
+		place.Accessibility.UpdatedAt = now
+		if keyID != "" {
+			place.Accessibility.SubmittedBy = &keyID
+		}
+		place.Accessibility.SubmittedAt = &now
 		s.engine.WithAuditFlags(place.Accessibility)
 		if conflicts := s.engine.DetectConflicts(place.Accessibility); len(conflicts) > 0 {
 			return apiv1.CreatePlace422JSONResponse(conflictError(conflicts)), nil
@@ -252,6 +264,11 @@ func (s *Server) CreatePlace(ctx context.Context, request apiv1.CreatePlaceReque
 
 	if err := s.db.Create(&place).Error; err != nil {
 		return nil, err
+	}
+
+	audit.Log(s.db, "places", place.ID, keyID, "create")
+	if place.Accessibility != nil {
+		audit.Log(s.db, "accessibility_profiles", place.Accessibility.ID, keyID, "create")
 	}
 
 	return apiv1.CreatePlace201JSONResponse(place), nil
@@ -283,13 +300,21 @@ func (s *Server) GetPlace(ctx context.Context, request apiv1.GetPlaceRequestObje
 func (s *Server) PatchPlaceAccessibility(ctx context.Context, request apiv1.PatchPlaceAccessibilityRequestObject) (apiv1.PatchPlaceAccessibilityResponseObject, error) {
 	id := request.Id.String()
 	input := *request.Body
+	keyID := middleware.APIKeyIDFromCtx(ctx)
 
 	s.engine.WithAuditFlags(&input)
 	if conflicts := s.engine.DetectConflicts(&input); len(conflicts) > 0 {
 		return apiv1.PatchPlaceAccessibility422JSONResponse(conflictError(conflicts)), nil
 	}
 
+	now := time.Now()
+	if keyID != "" {
+		input.SubmittedBy = &keyID
+	}
+	input.SubmittedAt = &now
+
 	var result models.AccessibilityProfile
+	var auditAction string
 	err := s.db.Transaction(func(tx *gorm.DB) error {
 		var profile models.AccessibilityProfile
 		err := tx.Where("place_id = ?", id).First(&profile).Error
@@ -302,23 +327,27 @@ func (s *Server) PatchPlaceAccessibility(ctx context.Context, request apiv1.Patc
 				return err
 			}
 			input.PlaceID = id
-			input.UpdatedAt = time.Now()
+			input.UpdatedAt = now
 			if err := tx.Create(&input).Error; err != nil {
 				return err
 			}
 			result = input
+			auditAction = "create"
 			return nil
 		}
 
 		updates := map[string]any{
 			"overall_status": input.OverallStatus,
 			"components":     input.Components,
-			"updated_at":     time.Now(),
+			"updated_at":     now,
+			"submitted_by":   input.SubmittedBy,
+			"submitted_at":   input.SubmittedAt,
 		}
 		if err := tx.Model(&profile).Clauses(clause.Returning{}).Updates(updates).Error; err != nil {
 			return err
 		}
 		result = profile
+		auditAction = "update"
 		return nil
 	})
 
@@ -328,6 +357,8 @@ func (s *Server) PatchPlaceAccessibility(ctx context.Context, request apiv1.Patc
 		}
 		return nil, err
 	}
+
+	audit.Log(s.db, "accessibility_profiles", result.ID, keyID, auditAction)
 
 	return apiv1.PatchPlaceAccessibility200JSONResponse(result), nil
 }

@@ -52,7 +52,7 @@ func run(m *testing.M) int {
 // truncate clears all test data between tests to prevent state bleed.
 func truncate(t *testing.T) {
 	t.Helper()
-	testDB.Exec("TRUNCATE places, accessibility_profiles, api_keys CASCADE")
+	testDB.Exec("TRUNCATE places, accessibility_profiles, api_keys, write_logs CASCADE")
 }
 
 func newTestServer(t *testing.T) *Server {
