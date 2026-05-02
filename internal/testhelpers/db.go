@@ -27,9 +27,9 @@ func StartPostgres(ctx context.Context) (*gorm.DB, func(), error) {
 		tcpostgres.WithUsername("test"),
 		tcpostgres.WithPassword("test"),
 		testcontainers.WithWaitStrategy(
-			wait.ForSQL("5432/tcp", "pgx", func(host string, port string) string {
-				return fmt.Sprintf("host=%s port=%s user=test password=test dbname=inwheel_test sslmode=disable", host, port)
-			}).WithStartupTimeout(2*time.Minute),
+			wait.ForLog("database system is ready to accept connections").
+				WithOccurrence(2).
+				WithStartupTimeout(2*time.Minute),
 		),
 	)
 	if err != nil {

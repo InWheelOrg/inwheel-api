@@ -41,5 +41,13 @@ func (s *Server) authenticate(ctx context.Context, ai *openapi3filter.Authentica
 		}
 		return err
 	}
+
+	// Enrich the request context with the API key ID so downstream handlers and
+	// the request logger can access it without an additional DB lookup.
+	req := ai.RequestValidationInput.Request
+	enriched := middleware.WithAPIKeyID(req.Context(), apiKey.ID)
+	middleware.SetLogAPIKeyID(enriched, apiKey.ID)
+	*req = *req.WithContext(enriched)
+
 	return nil
 }
