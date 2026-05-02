@@ -187,7 +187,11 @@ func bodySizeLimiter(maxBytes int64) apiv1.MiddlewareFunc {
 func (s *Server) ListPlaces(ctx context.Context, request apiv1.ListPlacesRequestObject) (apiv1.ListPlacesResponseObject, error) {
 	q := request.Params
 
-	if errs := validation.PlacesQuery(buildRawQuery(q)); len(errs) > 0 {
+	if errs := validation.PlacesQuery(validation.PlacesQueryParams{
+		Lng: q.Lng, Lat: q.Lat, Radius: q.Radius,
+		MinLng: q.MinLng, MinLat: q.MinLat, MaxLng: q.MaxLng, MaxLat: q.MaxLat,
+		Cursor: q.Cursor,
+	}); len(errs) > 0 {
 		return apiv1.ListPlaces400JSONResponse(validationError(errs)), nil
 	}
 
@@ -379,26 +383,6 @@ func writeJSON(w http.ResponseWriter, data any, code int) {
 	if err := enc.Encode(data); err != nil {
 		slog.Error("writeJSON: encode failed", "error", err)
 	}
-}
-
-func buildRawQuery(p apiv1.ListPlacesParams) map[string][]string {
-	q := make(map[string][]string)
-	setFloat := func(key string, v *float64) {
-		if v != nil {
-			q[key] = []string{strconv.FormatFloat(*v, 'f', -1, 64)}
-		}
-	}
-	setFloat("lng", p.Lng)
-	setFloat("lat", p.Lat)
-	setFloat("radius", p.Radius)
-	setFloat("min_lng", p.MinLng)
-	setFloat("min_lat", p.MinLat)
-	setFloat("max_lng", p.MaxLng)
-	setFloat("max_lat", p.MaxLat)
-	if p.Cursor != nil {
-		q["cursor"] = []string{*p.Cursor}
-	}
-	return q
 }
 
 func getEnv(key, fallback string) string {
