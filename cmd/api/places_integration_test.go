@@ -48,9 +48,9 @@ func TestHandleGetPlaces_DefaultPagination(t *testing.T) {
 		testDB.Create(&p)
 	}
 
-	r := httptest.NewRequest(http.MethodGet, "/places?limit=2", nil)
+	r := httptest.NewRequest(http.MethodGet, "/v1/places?limit=2", nil)
 	w := httptest.NewRecorder()
-	newTestServer(t).handleGetPlaces(w, r)
+	handlerForServer(t, newTestServer(t)).ServeHTTP(w, r)
 
 	if w.Code != http.StatusOK {
 		t.Fatalf("status = %d, want 200; body: %s", w.Code, w.Body.String())
@@ -80,9 +80,9 @@ func TestHandleGetPlaces_LastPageHasNoCursor(t *testing.T) {
 		testDB.Create(&p)
 	}
 
-	r := httptest.NewRequest(http.MethodGet, "/places?limit=10", nil)
+	r := httptest.NewRequest(http.MethodGet, "/v1/places?limit=10", nil)
 	w := httptest.NewRecorder()
-	newTestServer(t).handleGetPlaces(w, r)
+	handlerForServer(t, newTestServer(t)).ServeHTTP(w, r)
 
 	if w.Code != http.StatusOK {
 		t.Fatalf("status = %d, want 200; body: %s", w.Code, w.Body.String())
@@ -117,9 +117,9 @@ func TestHandleGetPlaces_CursorAdvancesPage(t *testing.T) {
 	}
 
 	// First page: expect 3 results and a cursor.
-	r1 := httptest.NewRequest(http.MethodGet, "/places?limit=3", nil)
+	r1 := httptest.NewRequest(http.MethodGet, "/v1/places?limit=3", nil)
 	w1 := httptest.NewRecorder()
-	newTestServer(t).handleGetPlaces(w1, r1)
+	handlerForServer(t, newTestServer(t)).ServeHTTP(w1, r1)
 
 	if w1.Code != http.StatusOK {
 		t.Fatalf("page 1 status = %d; body: %s", w1.Code, w1.Body.String())
@@ -133,9 +133,9 @@ func TestHandleGetPlaces_CursorAdvancesPage(t *testing.T) {
 	}
 
 	// Second page using the cursor.
-	r2 := httptest.NewRequest(http.MethodGet, "/places?limit=3&cursor="+cursor, nil)
+	r2 := httptest.NewRequest(http.MethodGet, "/v1/places?limit=3&cursor="+cursor, nil)
 	w2 := httptest.NewRecorder()
-	newTestServer(t).handleGetPlaces(w2, r2)
+	handlerForServer(t, newTestServer(t)).ServeHTTP(w2, r2)
 
 	if w2.Code != http.StatusOK {
 		t.Fatalf("page 2 status = %d; body: %s", w2.Code, w2.Body.String())
@@ -174,9 +174,9 @@ func TestHandleGetPlaces_DefaultLimitIs20(t *testing.T) {
 		testDB.Create(&p)
 	}
 
-	r := httptest.NewRequest(http.MethodGet, "/places", nil)
+	r := httptest.NewRequest(http.MethodGet, "/v1/places", nil)
 	w := httptest.NewRecorder()
-	newTestServer(t).handleGetPlaces(w, r)
+	handlerForServer(t, newTestServer(t)).ServeHTTP(w, r)
 
 	if w.Code != http.StatusOK {
 		t.Fatalf("status = %d, want 200; body: %s", w.Code, w.Body.String())
@@ -188,9 +188,9 @@ func TestHandleGetPlaces_DefaultLimitIs20(t *testing.T) {
 }
 
 func TestHandleGetPlaces_InvalidCursorReturns400(t *testing.T) {
-	r := httptest.NewRequest(http.MethodGet, "/places?cursor=not-valid-base64!!!!", nil)
+	r := httptest.NewRequest(http.MethodGet, "/v1/places?cursor=not-valid-base64!!!!", nil)
 	w := httptest.NewRecorder()
-	newTestServer(t).handleGetPlaces(w, r)
+	handlerForServer(t, newTestServer(t)).ServeHTTP(w, r)
 
 	if w.Code != http.StatusBadRequest {
 		t.Errorf("status = %d, want 400", w.Code)
@@ -200,9 +200,9 @@ func TestHandleGetPlaces_InvalidCursorReturns400(t *testing.T) {
 func TestHandleGetPlaces_InvalidLimitReturns400(t *testing.T) {
 	for _, bad := range []string{"0", "101", "abc", "-5"} {
 		t.Run(bad, func(t *testing.T) {
-			r := httptest.NewRequest(http.MethodGet, "/places?limit="+bad, nil)
+			r := httptest.NewRequest(http.MethodGet, "/v1/places?limit="+bad, nil)
 			w := httptest.NewRecorder()
-			newTestServer(t).handleGetPlaces(w, r)
+			handlerForServer(t, newTestServer(t)).ServeHTTP(w, r)
 
 			if w.Code != http.StatusBadRequest {
 				t.Errorf("limit=%s: status = %d, want 400", bad, w.Code)
@@ -231,9 +231,9 @@ func TestHandleGetPlaces_ProximityPaginated(t *testing.T) {
 	testDB.Create(&london)
 
 	// First page of proximity query.
-	r := httptest.NewRequest(http.MethodGet, "/places?lng=13.405&lat=52.52&radius=5000&limit=3", nil)
+	r := httptest.NewRequest(http.MethodGet, "/v1/places?lng=13.405&lat=52.52&radius=5000&limit=3", nil)
 	w := httptest.NewRecorder()
-	newTestServer(t).handleGetPlaces(w, r)
+	handlerForServer(t, newTestServer(t)).ServeHTTP(w, r)
 
 	if w.Code != http.StatusOK {
 		t.Fatalf("status = %d, want 200; body: %s", w.Code, w.Body.String())
@@ -247,9 +247,9 @@ func TestHandleGetPlaces_ProximityPaginated(t *testing.T) {
 	}
 
 	// Second page.
-	r2 := httptest.NewRequest(http.MethodGet, "/places?lng=13.405&lat=52.52&radius=5000&limit=3&cursor="+cursor, nil)
+	r2 := httptest.NewRequest(http.MethodGet, "/v1/places?lng=13.405&lat=52.52&radius=5000&limit=3&cursor="+cursor, nil)
 	w2 := httptest.NewRecorder()
-	newTestServer(t).handleGetPlaces(w2, r2)
+	handlerForServer(t, newTestServer(t)).ServeHTTP(w2, r2)
 
 	if w2.Code != http.StatusOK {
 		t.Fatalf("page 2 status = %d; body: %s", w2.Code, w2.Body.String())
@@ -282,9 +282,9 @@ func TestHandleGetPlaces_BoundingBoxPaginated(t *testing.T) {
 	london := models.Place{Name: "London", Lat: 51.507, Lng: -0.127, Category: models.CategoryCafe, Source: "test"}
 	testDB.Create(&london)
 
-	r := httptest.NewRequest(http.MethodGet, "/places?min_lng=10.0&min_lat=50.0&max_lng=15.0&max_lat=55.0&limit=3", nil)
+	r := httptest.NewRequest(http.MethodGet, "/v1/places?min_lng=10.0&min_lat=50.0&max_lng=15.0&max_lat=55.0&limit=3", nil)
 	w := httptest.NewRecorder()
-	newTestServer(t).handleGetPlaces(w, r)
+	handlerForServer(t, newTestServer(t)).ServeHTTP(w, r)
 
 	if w.Code != http.StatusOK {
 		t.Fatalf("status = %d, want 200; body: %s", w.Code, w.Body.String())
@@ -297,9 +297,9 @@ func TestHandleGetPlaces_BoundingBoxPaginated(t *testing.T) {
 		t.Error("expected cursor with 1 more result")
 	}
 
-	r2 := httptest.NewRequest(http.MethodGet, "/places?min_lng=10.0&min_lat=50.0&max_lng=15.0&max_lat=55.0&limit=3&cursor="+cursor, nil)
+	r2 := httptest.NewRequest(http.MethodGet, "/v1/places?min_lng=10.0&min_lat=50.0&max_lng=15.0&max_lat=55.0&limit=3&cursor="+cursor, nil)
 	w2 := httptest.NewRecorder()
-	newTestServer(t).handleGetPlaces(w2, r2)
+	handlerForServer(t, newTestServer(t)).ServeHTTP(w2, r2)
 
 	if w2.Code != http.StatusOK {
 		t.Fatalf("page 2 status = %d; body: %s", w2.Code, w2.Body.String())
@@ -333,9 +333,9 @@ func TestHandleGetPlaces_PreloadsAccessibility(t *testing.T) {
 	}
 	testDB.Create(&p)
 
-	r := httptest.NewRequest(http.MethodGet, "/places", nil)
+	r := httptest.NewRequest(http.MethodGet, "/v1/places", nil)
 	w := httptest.NewRecorder()
-	newTestServer(t).handleGetPlaces(w, r)
+	handlerForServer(t, newTestServer(t)).ServeHTTP(w, r)
 
 	if w.Code != http.StatusOK {
 		t.Fatalf("status = %d, want 200; body: %s", w.Code, w.Body.String())
@@ -352,9 +352,9 @@ func TestHandleGetPlaces_PreloadsAccessibility(t *testing.T) {
 func TestHandleGetPlaces_EmptyDB(t *testing.T) {
 	t.Cleanup(func() { truncate(t) })
 
-	r := httptest.NewRequest(http.MethodGet, "/places", nil)
+	r := httptest.NewRequest(http.MethodGet, "/v1/places", nil)
 	w := httptest.NewRecorder()
-	newTestServer(t).handleGetPlaces(w, r)
+	handlerForServer(t, newTestServer(t)).ServeHTTP(w, r)
 
 	if w.Code != http.StatusOK {
 		t.Fatalf("status = %d, want 200", w.Code)
@@ -376,7 +376,7 @@ func TestHandleGetPlaces_CursorURLSafe(t *testing.T) {
 
 	// The cursor should survive being used as a query param.
 	q := "cursor=" + encoded
-	parsed, err := http.NewRequest(http.MethodGet, "/places?"+q, nil)
+	parsed, err := http.NewRequest(http.MethodGet, "/v1/places?"+q, nil)
 	if err != nil {
 		t.Fatalf("build request: %v", err)
 	}

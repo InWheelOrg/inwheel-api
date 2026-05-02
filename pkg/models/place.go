@@ -55,11 +55,11 @@ const (
 // Place is the identity layer model, representing a physical location.
 type Place struct {
 	// ID is the unique internal identifier.
-	ID string `json:"id" gorm:"primaryKey;type:uuid;default:gen_random_uuid()"`
+	ID string `json:"id,omitzero" gorm:"primaryKey;type:uuid;default:gen_random_uuid()"`
 	// OSMID is the original OpenStreetMap ID.
-	OSMID int64 `json:"osm_id"`
+	OSMID int64 `json:"osm_id,omitzero"`
 	// OSMType is the original OpenStreetMap data type.
-	OSMType OSMType `json:"osm_type"`
+	OSMType OSMType `json:"osm_type,omitzero"`
 	// Name is the human-readable name of the place.
 	Name string `json:"name"`
 	// Lng is the longitude of the place.
@@ -71,7 +71,7 @@ type Place struct {
 	// Category is the classification of the place.
 	Category Category `json:"category"`
 	// Rank is the zoom-level priority of the place.
-	Rank Rank `json:"rank"`
+	Rank Rank `json:"rank,omitzero"`
 	// ParentID is the identifier of the containing place (e.g., a shop's mall).
 	ParentID *string `json:"parent_id,omitzero"`
 	// Accessibility contains the accessibility profile of the place.
@@ -79,11 +79,11 @@ type Place struct {
 	// Tags contain additional key-value data from the source.
 	Tags PlaceTags `json:"tags,omitzero" gorm:"type:jsonb"`
 	// Source indicates where the data originated (e.g., "osm").
-	Source string `json:"source"`
+	Source string `json:"source,omitzero"`
 	// CreatedAt is the timestamp when the place was created.
-	CreatedAt time.Time `json:"created_at"`
+	CreatedAt time.Time `json:"created_at,omitzero"`
 	// UpdatedAt is the timestamp when the place was last updated.
-	UpdatedAt time.Time `json:"updated_at"`
+	UpdatedAt time.Time `json:"updated_at,omitzero"`
 }
 
 // Geometry represents a GeoJSON-compatible geometry object.

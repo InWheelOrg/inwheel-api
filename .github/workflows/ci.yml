@@ -40,6 +40,22 @@ jobs:
         with:
           version: latest
 
+  generated:
+    name: Verify Generated Code
+    needs: [build]
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+      - uses: actions/setup-go@4a3601121dd01d1626a1e23e37211e3254c1c06c # v6
+        with:
+          go-version-file: go.mod
+      - name: Verify generated code is current
+        run: |
+          go install github.com/oapi-codegen/oapi-codegen/v2/cmd/oapi-codegen@v2.7.0
+          go generate ./internal/api/v1/...
+          git diff --exit-code -- internal/api/v1/server.gen.go
+
   unit:
     name: Unit Tests
     needs: [build]
@@ -103,14 +119,3 @@ jobs:
         with:
           repo-checkout: false
 
-  review:
-    name: Code Review
-    needs: [lint, unit, integration, docker, vulncheck]
-    if: github.event_name == 'pull_request'
-    uses: ./.github/workflows/claude-code-review.yml
-    secrets: inherit
-    permissions:
-      contents: read
-      pull-requests: write
-      issues: read
-      id-token: write

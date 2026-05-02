@@ -7,7 +7,6 @@ package middleware
 
 import (
 	"context"
-	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -100,29 +99,3 @@ func TestRateLimiter_EvictGoroutine_StopsOnContextCancel(t *testing.T) {
 	}
 }
 
-// TestRequireAPIKey_RateLimitBeforeDB passes nil as the DB to prove the DB is never
-// reached when the rate limiter drops the request. A nil DB dereference would panic.
-func TestRequireAPIKey_RateLimitBeforeDB(t *testing.T) {
-	limiter := &RateLimiter{r: rate.Every(time.Hour), b: 0} // burst=0: Allow always false
-
-	handler := RequireAPIKey(nil, limiter, func(w http.ResponseWriter, r *http.Request) {
-		t.Fatal("inner handler must not be called when rate limited before DB lookup")
-	})
-
-	r := httptest.NewRequest(http.MethodPost, "/places", nil)
-	r.Header.Set("Authorization", "Bearer iwk_somefakekey")
-	w := httptest.NewRecorder()
-	handler(w, r)
-
-	if w.Code != http.StatusTooManyRequests {
-		t.Errorf("status = %d, want 429", w.Code)
-	}
-
-	var resp map[string]string
-	if err := json.NewDecoder(w.Body).Decode(&resp); err != nil {
-		t.Fatalf("decode response: %v", err)
-	}
-	if resp["error"] != "rate limit exceeded" {
-		t.Errorf("error = %q, want 'rate limit exceeded'", resp["error"])
-	}
-}

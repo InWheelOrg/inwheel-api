@@ -9,20 +9,13 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
-	"encoding/json"
-	"errors"
-	"log/slog"
 	"math"
 	"net"
 	"net/http"
-	"strconv"
-	"strings"
 	"sync"
 	"time"
 
-	"github.com/InWheelOrg/inwheel-server/pkg/models"
 	"golang.org/x/time/rate"
-	"gorm.io/gorm"
 )
 
 // RateLimiter holds per-key token buckets keyed by an arbitrary string (IP, key hash, etc.).
@@ -86,40 +79,6 @@ func (l *RateLimiter) Allow(key string) bool {
 	return v.(*rate.Limiter).Allow()
 }
 
-// RequireAPIKey enforces API key auth and per-key rate limiting before delegating to next.
-// Rate-limit check precedes the DB lookup; revoked keys are filtered at the DB level.
-func RequireAPIKey(db *gorm.DB, krl *RateLimiter, next http.HandlerFunc) http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
-		authHeader := r.Header.Get("Authorization")
-		if !strings.HasPrefix(authHeader, "Bearer ") {
-			jsonError(w, "unauthorized", http.StatusUnauthorized)
-			return
-		}
-
-		rawKey := strings.TrimPrefix(authHeader, "Bearer ")
-		hash := SHA256Hex(rawKey)
-
-		if !krl.Allow(hash) {
-			w.Header().Set("Retry-After", strconv.Itoa(krl.RetryAfterSeconds()))
-			jsonError(w, "rate limit exceeded", http.StatusTooManyRequests)
-			return
-		}
-
-		var apiKey models.APIKey
-		if err := db.Where("key_hash = ? AND revoked_at IS NULL", hash).First(&apiKey).Error; err != nil {
-			if !errors.Is(err, gorm.ErrRecordNotFound) {
-				slog.Error("auth: key lookup failed", "error", err)
-				jsonError(w, "internal server error", http.StatusInternalServerError)
-				return
-			}
-			jsonError(w, "unauthorized", http.StatusUnauthorized)
-			return
-		}
-
-		next(w, r)
-	}
-}
-
 // SHA256Hex returns the lowercase hex-encoded SHA-256 digest of s.
 func SHA256Hex(s string) string {
 	h := sha256.Sum256([]byte(s))
@@ -135,14 +94,4 @@ func ClientIP(r *http.Request) string {
 		return r.RemoteAddr
 	}
 	return ip
-}
-
-// jsonError writes a minimal {"error": msg} JSON response.
-func jsonError(w http.ResponseWriter, msg string, code int) {
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(code)
-	payload, _ := json.Marshal(map[string]string{"error": msg})
-	if _, err := w.Write(payload); err != nil {
-		slog.Error("Error writing JSON error response", "error", err)
-	}
 }

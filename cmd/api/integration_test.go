@@ -15,6 +15,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"strings"
 	"testing"
 	"time"
 
@@ -23,6 +24,7 @@ import (
 	"github.com/InWheelOrg/inwheel-server/internal/testhelpers"
 	"github.com/InWheelOrg/inwheel-server/pkg/models"
 	"golang.org/x/time/rate"
+	"gopkg.in/yaml.v3"
 	"gorm.io/gorm"
 )
 
@@ -78,9 +80,10 @@ func TestHandlePostPlace_WithAccessibility(t *testing.T) {
 		},
 	})
 
-	r := httptest.NewRequest(http.MethodPost, "/places", bytes.NewReader(body))
+	r := httptest.NewRequest(http.MethodPost, "/v1/places", bytes.NewReader(body))
+	r.Header.Set("Content-Type", "application/json")
 	w := httptest.NewRecorder()
-	newTestServer(t).handlePostPlace(w, r)
+	handlerNoAuth(t, newTestServer(t)).ServeHTTP(w, r)
 
 	if w.Code != http.StatusCreated {
 		t.Fatalf("status = %d, want 201; body: %s", w.Code, w.Body.String())
@@ -105,9 +108,10 @@ func TestHandlePostPlace_WithoutAccessibility(t *testing.T) {
 		Source:   "test",
 	})
 
-	r := httptest.NewRequest(http.MethodPost, "/places", bytes.NewReader(body))
+	r := httptest.NewRequest(http.MethodPost, "/v1/places", bytes.NewReader(body))
+	r.Header.Set("Content-Type", "application/json")
 	w := httptest.NewRecorder()
-	newTestServer(t).handlePostPlace(w, r)
+	handlerNoAuth(t, newTestServer(t)).ServeHTTP(w, r)
 
 	if w.Code != http.StatusCreated {
 		t.Fatalf("status = %d, want 201; body: %s", w.Code, w.Body.String())
@@ -150,9 +154,10 @@ func TestHandlePostPlace_HardConflictReturns422(t *testing.T) {
 		},
 	})
 
-	r := httptest.NewRequest(http.MethodPost, "/places", bytes.NewReader(body))
+	r := httptest.NewRequest(http.MethodPost, "/v1/places", bytes.NewReader(body))
+	r.Header.Set("Content-Type", "application/json")
 	w := httptest.NewRecorder()
-	newTestServer(t).handlePostPlace(w, r)
+	handlerNoAuth(t, newTestServer(t)).ServeHTTP(w, r)
 
 	if w.Code != http.StatusUnprocessableEntity {
 		t.Fatalf("status = %d, want 422; body: %s", w.Code, w.Body.String())
@@ -196,9 +201,10 @@ func TestHandlePostPlace_InformationalFlagsAllowed(t *testing.T) {
 		},
 	})
 
-	r := httptest.NewRequest(http.MethodPost, "/places", bytes.NewReader(body))
+	r := httptest.NewRequest(http.MethodPost, "/v1/places", bytes.NewReader(body))
+	r.Header.Set("Content-Type", "application/json")
 	w := httptest.NewRecorder()
-	newTestServer(t).handlePostPlace(w, r)
+	handlerNoAuth(t, newTestServer(t)).ServeHTTP(w, r)
 
 	if w.Code != http.StatusCreated {
 		t.Fatalf("status = %d, want 201; body: %s", w.Code, w.Body.String())
@@ -228,10 +234,11 @@ func TestHandlePatchAccessibility_PlaceNotFound(t *testing.T) {
 	const nonExistentID = "00000000-0000-0000-0000-000000000000"
 	body, _ := json.Marshal(models.AccessibilityProfile{OverallStatus: models.StatusAccessible})
 
-	r := httptest.NewRequest(http.MethodPatch, "/places/"+nonExistentID+"/accessibility", bytes.NewReader(body))
+	r := httptest.NewRequest(http.MethodPatch, "/v1/places/"+nonExistentID+"/accessibility", bytes.NewReader(body))
+	r.Header.Set("Content-Type", "application/json")
 	r.SetPathValue("id", nonExistentID)
 	w := httptest.NewRecorder()
-	newTestServer(t).handlePatchAccessibility(w, r)
+	handlerNoAuth(t, newTestServer(t)).ServeHTTP(w, r)
 
 	if w.Code != http.StatusNotFound {
 		t.Errorf("status = %d, want 404; body: %s", w.Code, w.Body.String())
@@ -248,10 +255,11 @@ func TestHandlePatchAccessibility_CreatePath(t *testing.T) {
 		OverallStatus: models.StatusLimited,
 	})
 
-	r := httptest.NewRequest(http.MethodPatch, "/places/"+place.ID+"/accessibility", bytes.NewReader(body))
+	r := httptest.NewRequest(http.MethodPatch, "/v1/places/"+place.ID+"/accessibility", bytes.NewReader(body))
+	r.Header.Set("Content-Type", "application/json")
 	r.SetPathValue("id", place.ID)
 	w := httptest.NewRecorder()
-	newTestServer(t).handlePatchAccessibility(w, r)
+	handlerNoAuth(t, newTestServer(t)).ServeHTTP(w, r)
 
 	if w.Code != http.StatusOK {
 		t.Fatalf("status = %d, want 200; body: %s", w.Code, w.Body.String())
@@ -287,10 +295,11 @@ func TestHandlePatchAccessibility_UpdatesExistingProfile(t *testing.T) {
 		OverallStatus: models.StatusLimited,
 	})
 
-	r := httptest.NewRequest(http.MethodPatch, "/places/"+place.ID+"/accessibility", bytes.NewReader(body))
+	r := httptest.NewRequest(http.MethodPatch, "/v1/places/"+place.ID+"/accessibility", bytes.NewReader(body))
+	r.Header.Set("Content-Type", "application/json")
 	r.SetPathValue("id", place.ID)
 	w := httptest.NewRecorder()
-	newTestServer(t).handlePatchAccessibility(w, r)
+	handlerNoAuth(t, newTestServer(t)).ServeHTTP(w, r)
 
 	if w.Code != http.StatusOK {
 		t.Fatalf("status = %d, want 200; body: %s", w.Code, w.Body.String())
@@ -328,10 +337,11 @@ func TestHandlePatchAccessibility_ConflictReturns422(t *testing.T) {
 		},
 	})
 
-	r := httptest.NewRequest(http.MethodPatch, "/places/"+place.ID+"/accessibility", bytes.NewReader(body))
+	r := httptest.NewRequest(http.MethodPatch, "/v1/places/"+place.ID+"/accessibility", bytes.NewReader(body))
+	r.Header.Set("Content-Type", "application/json")
 	r.SetPathValue("id", place.ID)
 	w := httptest.NewRecorder()
-	newTestServer(t).handlePatchAccessibility(w, r)
+	handlerNoAuth(t, newTestServer(t)).ServeHTTP(w, r)
 
 	if w.Code != http.StatusUnprocessableEntity {
 		t.Fatalf("status = %d, want 422; body: %s", w.Code, w.Body.String())
@@ -364,10 +374,10 @@ func TestHandleGetPlace_ReturnsPlaceWithAccessibility(t *testing.T) {
 	}
 	testDB.Create(&place)
 
-	r := httptest.NewRequest(http.MethodGet, "/places/"+place.ID, nil)
+	r := httptest.NewRequest(http.MethodGet, "/v1/places/"+place.ID, nil)
 	r.SetPathValue("id", place.ID)
 	w := httptest.NewRecorder()
-	newTestServer(t).handleGetPlace(w, r)
+	handlerForServer(t, newTestServer(t)).ServeHTTP(w, r)
 
 	if w.Code != http.StatusOK {
 		t.Fatalf("status = %d, want 200; body: %s", w.Code, w.Body.String())
@@ -386,10 +396,10 @@ func TestHandleGetPlace_NotFound(t *testing.T) {
 	t.Cleanup(func() { truncate(t) })
 
 	const nonExistentID = "00000000-0000-0000-0000-000000000000"
-	r := httptest.NewRequest(http.MethodGet, "/places/"+nonExistentID, nil)
+	r := httptest.NewRequest(http.MethodGet, "/v1/places/"+nonExistentID, nil)
 	r.SetPathValue("id", nonExistentID)
 	w := httptest.NewRecorder()
-	newTestServer(t).handleGetPlace(w, r)
+	handlerForServer(t, newTestServer(t)).ServeHTTP(w, r)
 
 	if w.Code != http.StatusNotFound {
 		t.Errorf("status = %d, want 404", w.Code)
@@ -425,10 +435,10 @@ func TestHandleGetPlace_InheritsParentComponents(t *testing.T) {
 	}
 	testDB.Create(&child)
 
-	r := httptest.NewRequest(http.MethodGet, "/places/"+child.ID, nil)
+	r := httptest.NewRequest(http.MethodGet, "/v1/places/"+child.ID, nil)
 	r.SetPathValue("id", child.ID)
 	w := httptest.NewRecorder()
-	newTestServer(t).handleGetPlace(w, r)
+	handlerForServer(t, newTestServer(t)).ServeHTTP(w, r)
 
 	if w.Code != http.StatusOK {
 		t.Fatalf("status = %d, want 200; body: %s", w.Code, w.Body.String())
@@ -494,10 +504,10 @@ func TestHandleGetPlace_ChildOverridesParentComponent(t *testing.T) {
 	}
 	testDB.Create(&child)
 
-	r := httptest.NewRequest(http.MethodGet, "/places/"+child.ID, nil)
+	r := httptest.NewRequest(http.MethodGet, "/v1/places/"+child.ID, nil)
 	r.SetPathValue("id", child.ID)
 	w := httptest.NewRecorder()
-	newTestServer(t).handleGetPlace(w, r)
+	handlerForServer(t, newTestServer(t)).ServeHTTP(w, r)
 
 	if w.Code != http.StatusOK {
 		t.Fatalf("status = %d, want 200; body: %s", w.Code, w.Body.String())
@@ -546,10 +556,10 @@ func TestHandleGetPlace_NoParentReturnsRawData(t *testing.T) {
 	}
 	testDB.Create(&place)
 
-	r := httptest.NewRequest(http.MethodGet, "/places/"+place.ID, nil)
+	r := httptest.NewRequest(http.MethodGet, "/v1/places/"+place.ID, nil)
 	r.SetPathValue("id", place.ID)
 	w := httptest.NewRecorder()
-	newTestServer(t).handleGetPlace(w, r)
+	handlerForServer(t, newTestServer(t)).ServeHTTP(w, r)
 
 	if w.Code != http.StatusOK {
 		t.Fatalf("status = %d, want 200; body: %s", w.Code, w.Body.String())
@@ -570,6 +580,26 @@ func TestHandleGetPlace_NoParentReturnsRawData(t *testing.T) {
 	}
 }
 
+func TestHandleOpenAPISpec(t *testing.T) {
+	r := httptest.NewRequest(http.MethodGet, "/openapi.yaml", nil)
+	w := httptest.NewRecorder()
+	handlerForServer(t, newTestServer(t)).ServeHTTP(w, r)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200", w.Code)
+	}
+	if ct := w.Header().Get("Content-Type"); !strings.HasPrefix(ct, "application/yaml") {
+		t.Errorf("content-type = %q, want application/yaml", ct)
+	}
+	var doc map[string]any
+	if err := yaml.Unmarshal(w.Body.Bytes(), &doc); err != nil {
+		t.Fatalf("body is not valid yaml: %v", err)
+	}
+	if doc["openapi"] == nil {
+		t.Errorf("yaml missing top-level `openapi` key; body: %s", w.Body.String())
+	}
+}
+
 func TestHandleReadyz_DBReachable(t *testing.T) {
 	r := httptest.NewRequest(http.MethodGet, "/readyz", nil)
 	w := httptest.NewRecorder()
@@ -578,7 +608,7 @@ func TestHandleReadyz_DBReachable(t *testing.T) {
 	if w.Code != http.StatusOK {
 		t.Errorf("status = %d, want 200; body: %s", w.Code, w.Body.String())
 	}
-	if w.Body.String() != `{"status":"ok"}` {
+	if strings.TrimSpace(w.Body.String()) != `{"status":"ok"}` {
 		t.Errorf("body = %q, want {\"status\":\"ok\"}", w.Body.String())
 	}
 }

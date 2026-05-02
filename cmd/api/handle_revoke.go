@@ -6,45 +6,32 @@
 package main
 
 import (
-	"errors"
-	"log/slog"
-	"net/http"
-	"strings"
+	"context"
 	"time"
 
+	apiv1 "github.com/InWheelOrg/inwheel-server/internal/api/v1"
 	"github.com/InWheelOrg/inwheel-server/internal/middleware"
 	"github.com/InWheelOrg/inwheel-server/pkg/models"
-	"gorm.io/gorm"
 )
 
-// handleRevokeKey handles DELETE /auth/keys.
-// The bearer token in the Authorization header identifies which key to revoke.
-func (s *Server) handleRevokeKey(w http.ResponseWriter, r *http.Request) {
-	authHeader := r.Header.Get("Authorization")
-	if !strings.HasPrefix(authHeader, "Bearer ") {
-		jsonResponse(w, map[string]string{"error": "unauthorized"}, http.StatusUnauthorized)
-		return
+func (s *Server) RevokeKey(ctx context.Context, request apiv1.RevokeKeyRequestObject) (apiv1.RevokeKeyResponseObject, error) {
+	r := requestFromCtx(ctx)
+	if r == nil {
+		return apiv1.RevokeKey401JSONResponse{Error: "unauthorized"}, nil
+	}
+	rawKey := r.Header.Get("X-API-Key")
+	hash := middleware.SHA256Hex(rawKey)
+
+	result := s.db.Model(&models.APIKey{}).
+		Where("key_hash = ? AND revoked_at IS NULL", hash).
+		Update("revoked_at", time.Now())
+
+	if result.Error != nil {
+		return nil, result.Error
+	}
+	if result.RowsAffected == 0 {
+		return apiv1.RevokeKey401JSONResponse{Error: "unauthorized"}, nil
 	}
 
-	hash := middleware.SHA256Hex(strings.TrimPrefix(authHeader, "Bearer "))
-
-	var apiKey models.APIKey
-	err := s.db.Where("key_hash = ? AND revoked_at IS NULL", hash).First(&apiKey).Error
-	if err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
-			jsonResponse(w, map[string]string{"error": "unauthorized"}, http.StatusUnauthorized)
-			return
-		}
-		slog.Error("revoke: key lookup failed", "error", err)
-		jsonResponse(w, map[string]string{"error": "internal server error"}, http.StatusInternalServerError)
-		return
-	}
-
-	if err := s.db.Model(&apiKey).Update("revoked_at", time.Now()).Error; err != nil {
-		slog.Error("revoke: update failed", "error", err)
-		jsonResponse(w, map[string]string{"error": "internal server error"}, http.StatusInternalServerError)
-		return
-	}
-
-	w.WriteHeader(http.StatusNoContent)
+	return apiv1.RevokeKey204Response{}, nil
 }
