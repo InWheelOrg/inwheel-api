@@ -612,3 +612,81 @@ func TestHandleReadyz_DBReachable(t *testing.T) {
 		t.Errorf("body = %q, want {\"status\":\"ok\"}", w.Body.String())
 	}
 }
+
+func TestHandlePostPlace_StatusDefaultsToActive(t *testing.T) {
+	t.Cleanup(func() { truncate(t) })
+
+	body, _ := json.Marshal(models.Place{
+		Name:     "Test Cafe",
+		Lat:      52.5,
+		Lng:      13.4,
+		Category: models.CategoryCafe,
+		Source:   "test",
+	})
+
+	r := httptest.NewRequest(http.MethodPost, "/v1/places", bytes.NewReader(body))
+	r.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	handlerNoAuth(t, newTestServer(t)).ServeHTTP(w, r)
+
+	if w.Code != http.StatusCreated {
+		t.Fatalf("status = %d, want 201; body: %s", w.Code, w.Body.String())
+	}
+
+	var place models.Place
+	testDB.Last(&place)
+	if place.Status != models.PlaceStatusActive {
+		t.Errorf("status = %q, want %q", place.Status, models.PlaceStatusActive)
+	}
+}
+
+func TestHandlePostPlace_ExternalIDsRoundTrip(t *testing.T) {
+	t.Cleanup(func() { truncate(t) })
+
+	body, _ := json.Marshal(models.Place{
+		Name:        "OSM Cafe",
+		Lat:         52.5,
+		Lng:         13.4,
+		Category:    models.CategoryCafe,
+		Source:      "osm",
+		ExternalIDs: models.ExternalIDs{"osm": "node/123456"},
+	})
+
+	r := httptest.NewRequest(http.MethodPost, "/v1/places", bytes.NewReader(body))
+	r.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	handlerNoAuth(t, newTestServer(t)).ServeHTTP(w, r)
+
+	if w.Code != http.StatusCreated {
+		t.Fatalf("status = %d, want 201; body: %s", w.Code, w.Body.String())
+	}
+
+	var place models.Place
+	testDB.Last(&place)
+	if place.ExternalIDs["osm"] != "node/123456" {
+		t.Errorf("external_ids[osm] = %q, want %q", place.ExternalIDs["osm"], "node/123456")
+	}
+}
+
+func TestHandlePatchAccessibility_UserVerifiedDefaultsFalse(t *testing.T) {
+	t.Cleanup(func() { truncate(t) })
+
+	place := models.Place{Name: "Test Cafe", Lat: 52.5, Lng: 13.4, Category: models.CategoryCafe, Source: "test"}
+	testDB.Create(&place)
+
+	body, _ := json.Marshal(models.AccessibilityProfile{OverallStatus: models.StatusAccessible})
+	r := httptest.NewRequest(http.MethodPatch, "/v1/places/"+place.ID+"/accessibility", bytes.NewReader(body))
+	r.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	handlerNoAuth(t, newTestServer(t)).ServeHTTP(w, r)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200; body: %s", w.Code, w.Body.String())
+	}
+
+	var profile models.AccessibilityProfile
+	testDB.Where("place_id = ?", place.ID).First(&profile)
+	if profile.UserVerified {
+		t.Error("user_verified should default to false for a new accessibility submission")
+	}
+}
