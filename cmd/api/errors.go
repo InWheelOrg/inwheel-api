@@ -13,7 +13,7 @@ import (
 	"strconv"
 	"strings"
 
-	apiv1 "github.com/InWheelOrg/inwheel-server/internal/api/v1"
+	apiv1 "github.com/InWheelOrg/inwheel-api/internal/api/v1"
 	"github.com/getkin/kin-openapi/openapi3filter"
 )
 

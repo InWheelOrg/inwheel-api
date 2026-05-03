@@ -12,7 +12,7 @@ import (
 	"fmt"
 	"time"
 
-	internaldb "github.com/InWheelOrg/inwheel-server/internal/db"
+	internaldb "github.com/InWheelOrg/inwheel-api/internal/db"
 	"github.com/testcontainers/testcontainers-go"
 	tcpostgres "github.com/testcontainers/testcontainers-go/modules/postgres"
 	"github.com/testcontainers/testcontainers-go/wait"

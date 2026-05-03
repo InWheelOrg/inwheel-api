@@ -13,9 +13,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/InWheelOrg/inwheel-server/internal/a11y"
-	apiv1 "github.com/InWheelOrg/inwheel-server/internal/api/v1"
-	"github.com/InWheelOrg/inwheel-server/internal/middleware"
+	"github.com/InWheelOrg/inwheel-api/internal/a11y"
+	apiv1 "github.com/InWheelOrg/inwheel-api/internal/api/v1"
+	"github.com/InWheelOrg/inwheel-api/internal/middleware"
 	"github.com/getkin/kin-openapi/openapi3filter"
 	nethttp_middleware "github.com/oapi-codegen/nethttp-middleware"
 	"golang.org/x/time/rate"

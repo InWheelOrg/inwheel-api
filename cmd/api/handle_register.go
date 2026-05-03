@@ -12,10 +12,10 @@ import (
 	"errors"
 	"log/slog"
 
-	apiv1 "github.com/InWheelOrg/inwheel-server/internal/api/v1"
-	"github.com/InWheelOrg/inwheel-server/internal/middleware"
-	"github.com/InWheelOrg/inwheel-server/internal/validation"
-	"github.com/InWheelOrg/inwheel-server/pkg/models"
+	apiv1 "github.com/InWheelOrg/inwheel-api/internal/api/v1"
+	"github.com/InWheelOrg/inwheel-api/internal/middleware"
+	"github.com/InWheelOrg/inwheel-api/internal/validation"
+	"github.com/InWheelOrg/inwheel-api/pkg/models"
 	"github.com/jackc/pgx/v5/pgconn"
 	"gorm.io/gorm"
 )

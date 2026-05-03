@@ -16,8 +16,8 @@ import (
 	"regexp"
 	"strings"
 
-	"github.com/InWheelOrg/inwheel-server/internal/pagination"
-	"github.com/InWheelOrg/inwheel-server/pkg/models"
+	"github.com/InWheelOrg/inwheel-api/internal/pagination"
+	"github.com/InWheelOrg/inwheel-api/pkg/models"
 )
 
 // FieldError describes a single rejected field in a 400 response.

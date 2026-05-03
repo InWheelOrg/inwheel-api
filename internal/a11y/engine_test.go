@@ -9,7 +9,7 @@ import (
 	"slices"
 	"testing"
 
-	"github.com/InWheelOrg/inwheel-server/pkg/models"
+	"github.com/InWheelOrg/inwheel-api/pkg/models"
 )
 
 func boolPtr(v bool) *bool        { return &v }

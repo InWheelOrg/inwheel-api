@@ -10,8 +10,8 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/InWheelOrg/inwheel-server/internal/middleware"
-	"github.com/InWheelOrg/inwheel-server/pkg/models"
+	"github.com/InWheelOrg/inwheel-api/internal/middleware"
+	"github.com/InWheelOrg/inwheel-api/pkg/models"
 	"github.com/getkin/kin-openapi/openapi3filter"
 	"gorm.io/gorm"
 )

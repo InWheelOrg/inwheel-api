@@ -62,7 +62,7 @@ components:
       x-go-type: models.EntranceProperties
       x-go-type-import:
         name: models
-        path: github.com/InWheelOrg/inwheel-server/pkg/models
+        path: github.com/InWheelOrg/inwheel-api/pkg/models
       type: object
       properties:
         width:
@@ -86,7 +86,7 @@ components:
       x-go-type: models.RestroomProperties
       x-go-type-import:
         name: models
-        path: github.com/InWheelOrg/inwheel-server/pkg/models
+        path: github.com/InWheelOrg/inwheel-api/pkg/models
       type: object
       properties:
         wheelchair_accessible:
@@ -105,7 +105,7 @@ components:
       x-go-type: models.ParkingProperties
       x-go-type-import:
         name: models
-        path: github.com/InWheelOrg/inwheel-server/pkg/models
+        path: github.com/InWheelOrg/inwheel-api/pkg/models
       type: object
       properties:
         has_disabled_spaces:
@@ -119,7 +119,7 @@ components:
       x-go-type: models.ElevatorProperties
       x-go-type-import:
         name: models
-        path: github.com/InWheelOrg/inwheel-server/pkg/models
+        path: github.com/InWheelOrg/inwheel-api/pkg/models
       type: object
       properties:
         width:
@@ -141,7 +141,7 @@ components:
       x-go-type: models.A11yComponent
       x-go-type-import:
         name: models
-        path: github.com/InWheelOrg/inwheel-server/pkg/models
+        path: github.com/InWheelOrg/inwheel-api/pkg/models
       type: object
       required: [type]
       properties:
@@ -174,7 +174,7 @@ components:
       x-go-type: models.AccessibilityProfile
       x-go-type-import:
         name: models
-        path: github.com/InWheelOrg/inwheel-server/pkg/models
+        path: github.com/InWheelOrg/inwheel-api/pkg/models
       type: object
       required: [overall_status]
       properties:
@@ -208,7 +208,7 @@ components:
       x-go-type: models.Place
       x-go-type-import:
         name: models
-        path: github.com/InWheelOrg/inwheel-server/pkg/models
+        path: github.com/InWheelOrg/inwheel-api/pkg/models
       type: object
       required: [name, lat, lng, category]
       properties:

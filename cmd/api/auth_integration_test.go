@@ -17,8 +17,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/InWheelOrg/inwheel-server/internal/middleware"
-	"github.com/InWheelOrg/inwheel-server/pkg/models"
+	"github.com/InWheelOrg/inwheel-api/internal/middleware"
+	"github.com/InWheelOrg/inwheel-api/pkg/models"
 	"golang.org/x/time/rate"
 )
 

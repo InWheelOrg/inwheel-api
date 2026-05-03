@@ -9,9 +9,9 @@ import (
 	"context"
 	"time"
 
-	apiv1 "github.com/InWheelOrg/inwheel-server/internal/api/v1"
-	"github.com/InWheelOrg/inwheel-server/internal/middleware"
-	"github.com/InWheelOrg/inwheel-server/pkg/models"
+	apiv1 "github.com/InWheelOrg/inwheel-api/internal/api/v1"
+	"github.com/InWheelOrg/inwheel-api/internal/middleware"
+	"github.com/InWheelOrg/inwheel-api/pkg/models"
 )
 
 func (s *Server) RevokeKey(ctx context.Context, request apiv1.RevokeKeyRequestObject) (apiv1.RevokeKeyResponseObject, error) {

@@ -1,4 +1,4 @@
-module github.com/InWheelOrg/inwheel-server
+module github.com/InWheelOrg/inwheel-api
 
 go 1.26.2
 

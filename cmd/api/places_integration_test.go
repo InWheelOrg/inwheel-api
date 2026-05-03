@@ -15,8 +15,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/InWheelOrg/inwheel-server/internal/pagination"
-	"github.com/InWheelOrg/inwheel-server/pkg/models"
+	"github.com/InWheelOrg/inwheel-api/internal/pagination"
+	"github.com/InWheelOrg/inwheel-api/pkg/models"
 )
 
 // decodePageResponse decodes the paginated GET /places envelope.

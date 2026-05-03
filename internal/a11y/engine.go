@@ -11,7 +11,7 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/InWheelOrg/inwheel-server/pkg/models"
+	"github.com/InWheelOrg/inwheel-api/pkg/models"
 )
 
 // Audit flag constants for each technical violation detected by WithAuditFlags.

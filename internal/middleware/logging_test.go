@@ -11,7 +11,7 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"github.com/InWheelOrg/inwheel-server/internal/middleware"
+	"github.com/InWheelOrg/inwheel-api/internal/middleware"
 	"github.com/google/uuid"
 )
 

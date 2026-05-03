@@ -10,7 +10,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/InWheelOrg/inwheel-server/pkg/models"
+	"github.com/InWheelOrg/inwheel-api/pkg/models"
 )
 
 func b64Enc(b []byte) string {

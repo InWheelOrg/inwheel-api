@@ -12,7 +12,7 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"github.com/InWheelOrg/inwheel-server/internal/middleware"
+	"github.com/InWheelOrg/inwheel-api/internal/middleware"
 	"github.com/getkin/kin-openapi/openapi3filter"
 	"golang.org/x/time/rate"
 )
