@@ -52,6 +52,9 @@ type AccessibilityProfile struct {
 	SubmittedBy *string `json:"-" gorm:"type:uuid"`
 	// SubmittedAt is the timestamp of the last submission.
 	SubmittedAt *time.Time `json:"submitted_at,omitzero"`
+	// UserVerified indicates that a human user explicitly submitted this accessibility data.
+	// When true, the ingestion service will not overwrite this profile with automated data.
+	UserVerified bool `json:"user_verified,omitzero"`
 	// UpdatedAt is the timestamp when the profile was last updated.
 	UpdatedAt time.Time `json:"updated_at,omitzero"`
 }

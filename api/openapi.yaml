@@ -50,6 +50,10 @@ components:
       type: string
       enum: [node, way, relation]
 
+    PlaceStatus:
+      type: string
+      enum: [active, closed, osm_removed]
+
     # ── Domain types — reuse existing Go structs via x-go-type ───────────────
     # x-go-type tells oapi-codegen "don't generate a new struct, use this one".
     # The spec schema still drives middleware validation; the Go type is imported.
@@ -196,6 +200,9 @@ components:
           type: string
           format: date-time
           readOnly: true
+        user_verified:
+          type: boolean
+          readOnly: true
 
     Place:
       x-go-type: models.Place
@@ -246,6 +253,13 @@ components:
         source:
           type: string
           maxLength: 64
+        external_ids:
+          type: object
+          additionalProperties:
+            type: string
+        status:
+          $ref: "#/components/schemas/PlaceStatus"
+          readOnly: true
         created_at:
           type: string
           format: date-time

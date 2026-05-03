@@ -24,6 +24,18 @@ const (
 	RankFeature Rank = 3
 )
 
+// PlaceStatus represents the lifecycle state of a place.
+type PlaceStatus string
+
+const (
+	// PlaceStatusActive means the place exists in OSM and is fully operational.
+	PlaceStatusActive PlaceStatus = "active"
+	// PlaceStatusClosed means the place has been reported as permanently closed.
+	PlaceStatusClosed PlaceStatus = "closed"
+	// PlaceStatusOSMRemoved means OSM removed the place but user accessibility data exists.
+	PlaceStatusOSMRemoved PlaceStatus = "osm_removed"
+)
+
 // Category represents the classification of a place.
 type Category string
 
@@ -78,6 +90,10 @@ type Place struct {
 	Accessibility *AccessibilityProfile `json:"accessibility,omitzero" gorm:"foreignKey:PlaceID"`
 	// Tags contain additional key-value data from the source.
 	Tags PlaceTags `json:"tags,omitzero" gorm:"type:jsonb"`
+	// ExternalIDs stores identifiers from external sources keyed by source name (e.g. {"osm": "node/123456"}).
+	ExternalIDs ExternalIDs `json:"external_ids,omitzero" gorm:"type:jsonb"`
+	// Status is the lifecycle state of the place.
+	Status PlaceStatus `json:"status,omitzero" gorm:"type:place_status;default:active"`
 	// Source indicates where the data originated (e.g., "osm").
 	Source string `json:"source,omitzero"`
 	// SubmittedBy is the ID of the API key that last wrote this record. Internal only.
@@ -140,4 +156,28 @@ func (t PlaceTags) Value() (driver.Value, error) {
 		return json.Marshal(make(PlaceTags))
 	}
 	return json.Marshal(t)
+}
+
+// ExternalIDs maps source names to their external identifiers (e.g. {"osm": "node/123456"}).
+type ExternalIDs map[string]string
+
+// Scan tells the SQL driver how to read the JSONB bytes into the map.
+func (e *ExternalIDs) Scan(value interface{}) error {
+	if value == nil {
+		*e = make(ExternalIDs)
+		return nil
+	}
+	bytes, ok := value.([]byte)
+	if !ok {
+		return errors.New("type assertion to []byte failed for ExternalIDs")
+	}
+	return json.Unmarshal(bytes, e)
+}
+
+// Value tells the SQL driver how to write the map to the database as JSONB.
+func (e ExternalIDs) Value() (driver.Value, error) {
+	if e == nil {
+		return nil, nil
+	}
+	return json.Marshal(e)
 }
