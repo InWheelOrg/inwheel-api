@@ -1,6 +1,6 @@
 .vscode/
 .idea/
-.claude/
+.claude/settings.local.json
 .postman/
 postman/
 .env

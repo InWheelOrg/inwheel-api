@@ -1,15 +1,8 @@
-# inwheel-server
+# InWheel API
 
-Backend for the **InWheel** accessibility platform. A global registry of wheelchair accessibility data for physical places.
+Public REST API for the **InWheel** accessibility platform, a global registry of physical place accessibility data.
 
 Licensed under [AGPL-3.0](./LICENSE).
-
-## Services
-
-| Service | Path | Description |
-|---|---|---|
-| `api` | `cmd/api` | Public REST API for places and accessibility profiles |
-| `ingestion` | `cmd/ingestion` | OSM data ingestion worker (in development) |
 
 ## Data Model
 
