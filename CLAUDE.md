@@ -26,7 +26,7 @@ Two active binaries under `cmd/`:
 | Service | Port | Role |
 |---|---|---|
 | `cmd/api` | 8080 | REST API — reads/writes places and accessibility data |
-| `cmd/ingestion` | — | Placeholder — future OpenStreetMap sync |
+| `cmd/ingestion` | — | Batch worker: reads OSM .osm.pbf files, filters POIs, upserts to the places table |
 
 **Data flow:**
 1. Client submits accessibility data via API
@@ -52,6 +52,15 @@ The API is a pure data layer. It stores and returns accessibility facts; it neve
 **`internal/validation`** — Structural request validation. Pure functions over `pkg/models` types: `Place`, `AccessibilityProfile`, `PlaceID`, `PlacesQuery`. Runs before the a11y engine; returns `[]FieldError` for handlers to render as a 400 response.
 
 **`internal/geo`** — PostGIS spatial queries (`ST_DWithin`, `ST_MakeEnvelope`)
+
+**`internal/osm`** — OpenStreetMap ingestion:
+- `Evaluate(tags)` — allowlist-based POI filter; returns matched category or excludes
+- `TransformNode(...)` — converts an OSM node into a `models.Place`
+- `DeriveRank(...)` — maps category + tags to RankLandmark / RankEstablishment / RankFeature
+- `StreamNodes(ctx, r, sink)` — streams OSM nodes from a `.osm.pbf` reader via paulmach/osm
+
+**`internal/place`** — Repository for the places table:
+- `UpsertBatch(ctx, places)` — bulk insert/update using `(osm_id, osm_type)` conflict key
 
 **`internal/db`** — GORM setup, AutoMigrate, PostGIS spatial index creation
 
