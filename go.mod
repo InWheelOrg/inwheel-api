@@ -1,6 +1,6 @@
 module github.com/InWheelOrg/inwheel-api
 
-go 1.26.2
+go 1.26.3
 
 require (
 	github.com/getkin/kin-openapi v0.137.0
