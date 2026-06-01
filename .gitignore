@@ -7,3 +7,5 @@ postman/
 .DS_Store
 .worktrees/
 docs/superpowers/
+.claude/
+!.claude/settings.json
