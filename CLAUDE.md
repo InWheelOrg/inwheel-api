@@ -53,7 +53,13 @@ The API is a pure data layer. It stores and returns accessibility facts; it neve
 
 **`internal/geo`** — PostGIS spatial queries (`ST_DWithin`, `ST_MakeEnvelope`)
 
-**`internal/osm`** — OpenStreetMap ingestion:
+**`internal/sources`** — Source abstraction for `cmd/ingestion`:
+- `Source` — identity (`Name()`)
+- `FullImporter` — full pull from the source via `FullImport(ctx, sink)`
+- `DiffSyncer` — incremental pull via `DiffSync(ctx, since, sink)`
+- Concrete sources live under `internal/sources/<name>/` and implement whichever capability interfaces they support; `cmd/ingestion` dispatches via `buildSource` + type assertions.
+
+**`internal/sources/osm`** — OpenStreetMap ingestion:
 - `Evaluate(tags)` — allowlist-based POI filter; returns matched category or excludes
 - `TransformNode(...)` — converts an OSM node into a `models.Place`
 - `DeriveRank(...)` — maps category + tags to RankLandmark / RankEstablishment / RankFeature

@@ -46,3 +46,7 @@ in the summary. If all findings are nits, lead the summary with "No blocking iss
 - Errors from `internal/a11y.DetectConflicts` return HTTP 422 (not 400 or 500)
 - Structural validation failures return HTTP 400 with a field-level error list
 - No accessibility "scoring" or "decision" logic leaks into handlers or services
+- New exported functions, HTTP handlers, repositories, and `internal/sources`
+  implementations are covered by unit or integration tests for each meaningful
+  branch (happy path, validation/error path, edge cases). Flag absence as
+  🔴 Important unless the function is a trivial pass-through.
