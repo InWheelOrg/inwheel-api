@@ -33,8 +33,8 @@ func TestRunFullImport_AgainstFixturePBF(t *testing.T) {
 		OSMPBFPath: "../../testdata/andorra-sample.osm.pbf",
 	}
 
-	if err := runFullImport(ctx, cfg); err != nil {
-		t.Fatalf("runFullImport: %v", err)
+	if err := run(ctx, "osm", "full-import", cfg); err != nil {
+		t.Fatalf("run: %v", err)
 	}
 
 	var count int64

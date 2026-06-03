@@ -10,11 +10,11 @@ import (
 	"fmt"
 	"log/slog"
 	"os"
+	"time"
 
 	"github.com/InWheelOrg/inwheel-api/internal/db"
-	"github.com/InWheelOrg/inwheel-api/internal/sources/osm"
 	"github.com/InWheelOrg/inwheel-api/internal/place"
-	"github.com/InWheelOrg/inwheel-api/pkg/models"
+	"github.com/InWheelOrg/inwheel-api/internal/sources"
 )
 
 const batchSize = 1000
@@ -22,10 +22,12 @@ const batchSize = 1000
 func main() {
 	slog.SetDefault(slog.New(slog.NewJSONHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelInfo})))
 
-	if len(os.Args) < 2 {
-		fmt.Fprintln(os.Stderr, "usage: inwheel-ingestion <full-import|diff-sync>")
+	if len(os.Args) < 3 {
+		fmt.Fprintln(os.Stderr, "usage: inwheel-ingestion <source> <full-import|diff-sync>")
 		os.Exit(1)
 	}
+	sourceName := os.Args[1]
+	command := os.Args[2]
 
 	cfg, err := loadConfig(environAsMap())
 	if err != nil {
@@ -33,6 +35,8 @@ func main() {
 		os.Exit(1)
 	}
 	slog.Info("config loaded",
+		"source", sourceName,
+		"command", command,
 		"db.host", cfg.DBHost,
 		"db.port", cfg.DBPort,
 		"db.user", cfg.DBUser,
@@ -41,17 +45,8 @@ func main() {
 		"osm.pbf_path", cfg.OSMPBFPath,
 	)
 
-	switch os.Args[1] {
-	case "full-import":
-		if err := runFullImport(context.Background(), cfg); err != nil {
-			slog.Error("full-import failed", "error", err)
-			os.Exit(1)
-		}
-	case "diff-sync":
-		slog.Error("diff-sync not implemented yet")
-		os.Exit(1)
-	default:
-		fmt.Fprintf(os.Stderr, "unknown command: %s\n", os.Args[1])
+	if err := run(context.Background(), sourceName, command, cfg); err != nil {
+		slog.Error("ingestion failed", "source", sourceName, "command", command, "error", err)
 		os.Exit(1)
 	}
 }
@@ -69,7 +64,12 @@ func environAsMap() map[string]string {
 	return out
 }
 
-func runFullImport(ctx context.Context, cfg config) error {
+func run(ctx context.Context, sourceName, command string, cfg config) error {
+	src, err := buildSource(sourceName, cfg)
+	if err != nil {
+		return err
+	}
+
 	gormDB, err := db.Connect(db.Config{
 		Host:     cfg.DBHost,
 		Port:     cfg.DBPort,
@@ -86,62 +86,39 @@ func runFullImport(ctx context.Context, cfg config) error {
 	}
 
 	repo := place.NewRepository(gormDB)
+	b := &batcher{size: batchSize, flush: repo.UpsertBatch}
 
-	f, err := os.Open(cfg.OSMPBFPath)
-	if err != nil {
-		return fmt.Errorf("open pbf: %w", err)
-	}
-	defer f.Close() //nolint:errcheck
-
-	var (
-		buffer    []models.Place
-		processed int
-		written   int
-	)
-
-	flush := func() error {
-		if len(buffer) == 0 {
-			return nil
-		}
-		if err := repo.UpsertBatch(ctx, buffer); err != nil {
-			return err
-		}
-		written += len(buffer)
-		buffer = buffer[:0]
-		return nil
+	if err := dispatch(ctx, src, command, b.sink); err != nil {
+		return fmt.Errorf("source %q: %w", src.Name(), err)
 	}
 
-	err = osm.StreamNodes(ctx, f, func(node osm.Node) error {
-		processed++
-		if processed%10000 == 0 {
-			slog.Info("progress", "processed", processed, "written", written)
-		}
-
-		category, ok := osm.Evaluate(node.Tags)
-		if !ok {
-			return nil
-		}
-
-		p, err := osm.TransformNode(node.ID, node.Lat, node.Lng, node.Tags, category)
-		if err != nil {
-			slog.Warn("skipping node, transform error", "node_id", node.ID, "error", err)
-			return nil
-		}
-
-		buffer = append(buffer, *p)
-		if len(buffer) >= batchSize {
-			return flush()
-		}
-		return nil
-	})
-	if err != nil {
-		return fmt.Errorf("stream: %w", err)
-	}
-
-	if err := flush(); err != nil {
+	if err := b.flushNow(ctx); err != nil {
 		return fmt.Errorf("final flush: %w", err)
 	}
 
-	slog.Info("full-import complete", "processed", processed, "written", written)
+	slog.Info("ingestion complete",
+		"source", src.Name(),
+		"command", command,
+		"written", b.written,
+	)
 	return nil
+}
+
+func dispatch(ctx context.Context, src sources.Source, command string, sink sources.Sink) error {
+	switch command {
+	case "full-import":
+		fi, ok := src.(sources.FullImporter)
+		if !ok {
+			return fmt.Errorf("source %q does not support full-import", src.Name())
+		}
+		return fi.FullImport(ctx, sink)
+	case "diff-sync":
+		ds, ok := src.(sources.DiffSyncer)
+		if !ok {
+			return fmt.Errorf("source %q does not support diff-sync", src.Name())
+		}
+		return ds.DiffSync(ctx, time.Time{}, sink)
+	default:
+		return fmt.Errorf("unknown command: %q", command)
+	}
 }
