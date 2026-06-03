@@ -12,7 +12,7 @@ import (
 	"os"
 
 	"github.com/InWheelOrg/inwheel-api/internal/db"
-	"github.com/InWheelOrg/inwheel-api/internal/osm"
+	"github.com/InWheelOrg/inwheel-api/internal/sources/osm"
 	"github.com/InWheelOrg/inwheel-api/internal/place"
 	"github.com/InWheelOrg/inwheel-api/pkg/models"
 )
