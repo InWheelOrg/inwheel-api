@@ -8,11 +8,21 @@ package osm
 import (
 	"context"
 	"errors"
+	"os"
 	"testing"
 
 	"github.com/InWheelOrg/inwheel-api/internal/sources"
 	"github.com/InWheelOrg/inwheel-api/pkg/models"
 )
+
+const fixturePBF = "../../../testdata/andorra-sample.osm.pbf"
+
+func requireFixture(t *testing.T) {
+	t.Helper()
+	if _, err := os.Stat(fixturePBF); err != nil {
+		t.Skipf("fixture PBF not available: %v", err)
+	}
+}
 
 func TestSource_Name(t *testing.T) {
 	s := &Source{PBFPath: "irrelevant"}
@@ -34,7 +44,8 @@ func TestSource_FullImport_OpenError(t *testing.T) {
 }
 
 func TestSource_FullImport_EmitsFromFixture(t *testing.T) {
-	s := &Source{PBFPath: "../../../testdata/andorra-sample.osm.pbf"}
+	requireFixture(t)
+	s := &Source{PBFPath: fixturePBF}
 
 	var emitted int
 	sink := func(_ context.Context, _ models.Place) error {
@@ -52,7 +63,8 @@ func TestSource_FullImport_EmitsFromFixture(t *testing.T) {
 }
 
 func TestSource_FullImport_PropagatesSinkError(t *testing.T) {
-	s := &Source{PBFPath: "../../../testdata/andorra-sample.osm.pbf"}
+	requireFixture(t)
+	s := &Source{PBFPath: fixturePBF}
 
 	sentinel := errors.New("sink stop")
 	sink := func(_ context.Context, _ models.Place) error {
