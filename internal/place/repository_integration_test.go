@@ -184,3 +184,96 @@ func TestUnmatchedExternal_UniqueConstraint(t *testing.T) {
 		t.Error("second insert with same (source, source_id) should fail the UNIQUE constraint, got nil error")
 	}
 }
+
+func TestUnmatchedExternal_ColumnDefaults(t *testing.T) {
+	ctx := context.Background()
+	db, cleanup, err := testhelpers.StartPostgres(ctx)
+	if err != nil {
+		t.Fatalf("start postgres: %v", err)
+	}
+	defer cleanup()
+
+	sqlDB, err := db.DB()
+	if err != nil {
+		t.Fatalf("get sql.DB: %v", err)
+	}
+
+	_, err = sqlDB.ExecContext(ctx, `
+		INSERT INTO unmatched_external (source, source_id, payload, lat, lng, geom)
+		VALUES ($1, $2, $3, $4, $5, ST_SetSRID(ST_MakePoint($5, $4), 4326))
+	`, "wheelmap", "wm/defaults", `{}`, 60.0, 25.0)
+	if err != nil {
+		t.Fatalf("insert: %v", err)
+	}
+
+	var attempts int
+	var lastAttempted *string // non-null check via nullable scan
+	row := sqlDB.QueryRowContext(ctx,
+		"SELECT attempts, last_attempted::text FROM unmatched_external WHERE source = $1 AND source_id = $2",
+		"wheelmap", "wm/defaults",
+	)
+	if err := row.Scan(&attempts, &lastAttempted); err != nil {
+		t.Fatalf("scan: %v", err)
+	}
+	if attempts != 1 {
+		t.Errorf("attempts = %d, want 1", attempts)
+	}
+	if lastAttempted == nil {
+		t.Error("last_attempted is NULL, want a timestamp from DEFAULT NOW()")
+	}
+}
+
+func TestUnmatchedExternal_SpatialQuery(t *testing.T) {
+	ctx := context.Background()
+	db, cleanup, err := testhelpers.StartPostgres(ctx)
+	if err != nil {
+		t.Fatalf("start postgres: %v", err)
+	}
+	defer cleanup()
+
+	sqlDB, err := db.DB()
+	if err != nil {
+		t.Fatalf("get sql.DB: %v", err)
+	}
+
+	// Vevey, Switzerland — two records with a clear distance separation.
+	// near: 46.4628, 6.8417 (Grand-Place)
+	// far:  46.4608, 6.8417 (~222 m south — well outside a 50 m radius)
+	insert := func(sourceID string, lat, lng float64) {
+		_, err := sqlDB.ExecContext(ctx, `
+			INSERT INTO unmatched_external (source, source_id, payload, lat, lng, geom)
+			VALUES ($1, $2, $3, $4, $5, ST_SetSRID(ST_MakePoint($5, $4), 4326))
+		`, "wheelmap", sourceID, `{}`, lat, lng)
+		if err != nil {
+			t.Fatalf("insert %s: %v", sourceID, err)
+		}
+	}
+	insert("near", 46.4628, 6.8417)
+	insert("far", 46.4608, 6.8417)
+
+	// Query within 50 m of the near point — should return only "near".
+	rows, err := sqlDB.QueryContext(ctx, `
+		SELECT source_id FROM unmatched_external
+		WHERE ST_DWithin(geom, ST_SetSRID(ST_MakePoint(6.8417, 46.4628), 4326)::geography, 50)
+	`)
+	if err != nil {
+		t.Fatalf("ST_DWithin query: %v", err)
+	}
+	defer rows.Close()
+
+	var found []string
+	for rows.Next() {
+		var id string
+		if err := rows.Scan(&id); err != nil {
+			t.Fatalf("scan: %v", err)
+		}
+		found = append(found, id)
+	}
+	if err := rows.Err(); err != nil {
+		t.Fatalf("rows: %v", err)
+	}
+
+	if len(found) != 1 || found[0] != "near" {
+		t.Errorf("ST_DWithin(50m) returned %v, want [near]", found)
+	}
+}
