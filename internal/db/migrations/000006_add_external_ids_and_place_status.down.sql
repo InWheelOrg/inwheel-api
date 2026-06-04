@@ -1,3 +1,6 @@
+DROP INDEX IF EXISTS unmatched_external_geom_idx;
+DROP TABLE IF EXISTS unmatched_external;
+
 DROP INDEX IF EXISTS idx_places_external_ids;
 
 ALTER TABLE places
