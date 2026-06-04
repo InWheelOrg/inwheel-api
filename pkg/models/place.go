@@ -197,7 +197,7 @@ func (e *ExternalIDs) Scan(value interface{}) error {
 // Value tells the SQL driver how to write the map to the database as JSONB.
 func (e ExternalIDs) Value() (driver.Value, error) {
 	if e == nil {
-		return nil, nil
+		return json.Marshal(make(ExternalIDs))
 	}
 	return json.Marshal(e)
 }

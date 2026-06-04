@@ -83,7 +83,11 @@ func TestExternalIDs_Value_Nil(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Value on nil map: %v", err)
 	}
-	if val != nil {
-		t.Errorf("Value on nil = %v, want nil", val)
+	b, ok := val.([]byte)
+	if !ok {
+		t.Fatalf("Value on nil returned %T, want []byte", val)
+	}
+	if string(b) != "{}" {
+		t.Errorf("Value on nil = %q, want {}", string(b))
 	}
 }
