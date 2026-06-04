@@ -77,6 +77,37 @@ func TestExternalIDs_Scan_Nil(t *testing.T) {
 	}
 }
 
+func TestExternalIDs_Value_NilRoundTrip(t *testing.T) {
+	var original models.ExternalIDs // nil
+
+	v1, err := original.Value()
+	if err != nil {
+		t.Fatalf("first Value: %v", err)
+	}
+	b1, ok := v1.([]byte)
+	if !ok {
+		t.Fatalf("first Value returned %T, want []byte", v1)
+	}
+
+	var afterScan models.ExternalIDs
+	if err := afterScan.Scan(nil); err != nil {
+		t.Fatalf("Scan(nil): %v", err)
+	}
+
+	v2, err := afterScan.Value()
+	if err != nil {
+		t.Fatalf("second Value: %v", err)
+	}
+	b2, ok := v2.([]byte)
+	if !ok {
+		t.Fatalf("second Value returned %T, want []byte", v2)
+	}
+
+	if string(b1) != string(b2) {
+		t.Errorf("Value output changed across round-trip: first=%q second=%q", string(b1), string(b2))
+	}
+}
+
 func TestExternalIDs_Value_Nil(t *testing.T) {
 	var e models.ExternalIDs
 	val, err := e.Value()
