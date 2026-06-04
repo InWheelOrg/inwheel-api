@@ -40,8 +40,14 @@ func TestTransformNode(t *testing.T) {
 	if place.Rank != models.RankEstablishment {
 		t.Errorf("rank: got %d want %d", place.Rank, models.RankEstablishment)
 	}
-	if place.ExternalIDs["osm"] != "node/123" {
-		t.Errorf("external_ids[osm]: got %q want node/123", place.ExternalIDs["osm"])
+	if place.ExternalIDs["osm"].ID != "node/123" {
+		t.Errorf("external_ids[osm].id: got %q want node/123", place.ExternalIDs["osm"].ID)
+	}
+	if place.ExternalIDs["osm"].Confidence != 1.0 {
+		t.Errorf("external_ids[osm].confidence: got %v want 1.0", place.ExternalIDs["osm"].Confidence)
+	}
+	if !place.ExternalIDs["osm"].MatchedAt.IsZero() {
+		t.Errorf("external_ids[osm].matched_at: expected zero for OSM entry, got %v", place.ExternalIDs["osm"].MatchedAt)
 	}
 	if place.Source != "osm" {
 		t.Errorf("source: got %q want osm", place.Source)

@@ -99,7 +99,7 @@ type Place struct {
 	Accessibility *AccessibilityProfile `json:"accessibility,omitzero" gorm:"foreignKey:PlaceID"`
 	// Tags contain additional key-value data from the source.
 	Tags PlaceTags `json:"tags,omitzero" gorm:"type:jsonb"`
-	// ExternalIDs stores identifiers from external sources keyed by source name (e.g. {"osm": "node/123456"}).
+	// ExternalIDs stores external reference metadata keyed by source name (e.g. {"osm": {id: "node/123456", confidence: 1.0}}).
 	ExternalIDs ExternalIDs `json:"external_ids,omitzero" gorm:"type:jsonb"`
 	// Status is the lifecycle state of the place.
 	Status PlaceStatus `json:"status,omitzero" gorm:"type:place_status;default:active"`
@@ -167,8 +167,19 @@ func (t PlaceTags) Value() (driver.Value, error) {
 	return json.Marshal(t)
 }
 
-// ExternalIDs maps source names to their external identifiers (e.g. {"osm": "node/123456"}).
-type ExternalIDs map[string]string
+// ExternalRef holds an external source's identifier plus the metadata that
+// qualifies how the link was established.
+type ExternalRef struct {
+	// ID is the identifier in the external source (e.g. "node/123456").
+	ID string `json:"id"`
+	// Confidence is the match score in [0, 1]. OSM entries are canonical and use 1.0.
+	Confidence float64 `json:"confidence"`
+	// MatchedAt is when the match was recorded. Zero for OSM entries (no match step).
+	MatchedAt time.Time `json:"matched_at,omitzero"`
+}
+
+// ExternalIDs maps source names to their external reference metadata (e.g. {"osm": {ID: "node/123456", Confidence: 1.0}}).
+type ExternalIDs map[string]ExternalRef
 
 // Scan tells the SQL driver how to read the JSONB bytes into the map.
 func (e *ExternalIDs) Scan(value interface{}) error {
