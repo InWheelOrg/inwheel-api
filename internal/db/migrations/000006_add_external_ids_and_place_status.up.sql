@@ -8,3 +8,18 @@ CREATE INDEX idx_places_external_ids ON places USING GIN (external_ids);
 
 ALTER TABLE accessibility_profiles
     ADD COLUMN user_verified BOOLEAN NOT NULL DEFAULT FALSE;
+
+CREATE TABLE unmatched_external (
+    id             BIGSERIAL        PRIMARY KEY,
+    source         TEXT             NOT NULL,
+    source_id      TEXT             NOT NULL,
+    payload        JSONB            NOT NULL,
+    lat            DOUBLE PRECISION NOT NULL,
+    lng            DOUBLE PRECISION NOT NULL,
+    geom           GEOGRAPHY(POINT, 4326) NOT NULL,
+    last_attempted TIMESTAMPTZ      NOT NULL,
+    attempts       INT              NOT NULL DEFAULT 1,
+    UNIQUE (source, source_id)
+);
+
+CREATE INDEX unmatched_external_geom_idx ON unmatched_external USING GIST (geom);
