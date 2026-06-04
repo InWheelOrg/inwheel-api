@@ -649,7 +649,7 @@ func TestHandlePostPlace_ExternalIDsRoundTrip(t *testing.T) {
 		Lng:         13.4,
 		Category:    models.CategoryCafe,
 		Source:      "osm",
-		ExternalIDs: models.ExternalIDs{"osm": "node/123456"},
+		ExternalIDs: models.ExternalIDs{"osm": models.ExternalRef{ID: "node/123456", Confidence: 1.0}},
 	})
 
 	r := httptest.NewRequest(http.MethodPost, "/v1/places", bytes.NewReader(body))
@@ -663,8 +663,11 @@ func TestHandlePostPlace_ExternalIDsRoundTrip(t *testing.T) {
 
 	var place models.Place
 	testDB.Last(&place)
-	if place.ExternalIDs["osm"] != "node/123456" {
-		t.Errorf("external_ids[osm] = %q, want %q", place.ExternalIDs["osm"], "node/123456")
+	if place.ExternalIDs["osm"].ID != "node/123456" {
+		t.Errorf("external_ids[osm].id = %q, want %q", place.ExternalIDs["osm"].ID, "node/123456")
+	}
+	if place.ExternalIDs["osm"].Confidence != 1.0 {
+		t.Errorf("external_ids[osm].confidence = %v, want 1.0", place.ExternalIDs["osm"].Confidence)
 	}
 }
 
