@@ -106,3 +106,62 @@ func TestUpsertBatch_EmptySliceIsNoOp(t *testing.T) {
 		t.Fatalf("empty batch should be a no-op, got error: %v", err)
 	}
 }
+
+func TestUnmatchedExternal_TableRoundTrip(t *testing.T) {
+	ctx := context.Background()
+	db, cleanup, err := testhelpers.StartPostgres(ctx)
+	if err != nil {
+		t.Fatalf("start postgres: %v", err)
+	}
+	defer cleanup()
+
+	sqlDB, err := db.DB()
+	if err != nil {
+		t.Fatalf("get sql.DB: %v", err)
+	}
+
+	_, err = sqlDB.ExecContext(ctx, `
+		INSERT INTO unmatched_external (source, source_id, payload, lat, lng, geom, last_attempted)
+		VALUES ($1, $2, $3, $4, $5, ST_SetSRID(ST_MakePoint($5, $4), 4326), NOW())
+	`, "wheelmap", "wm/456", `{"name":"Test Cafe","category":"cafe"}`, 60.1699, 24.9384)
+	if err != nil {
+		t.Fatalf("insert into unmatched_external: %v", err)
+	}
+
+	var count int
+	row := sqlDB.QueryRowContext(ctx,
+		"SELECT COUNT(*) FROM unmatched_external WHERE source = $1 AND source_id = $2",
+		"wheelmap", "wm/456",
+	)
+	if err := row.Scan(&count); err != nil {
+		t.Fatalf("count query: %v", err)
+	}
+	if count != 1 {
+		t.Errorf("count = %d, want 1", count)
+	}
+}
+
+func TestUnmatchedExternal_UniqueConstraint(t *testing.T) {
+	ctx := context.Background()
+	db, cleanup, err := testhelpers.StartPostgres(ctx)
+	if err != nil {
+		t.Fatalf("start postgres: %v", err)
+	}
+	defer cleanup()
+
+	sqlDB, _ := db.DB()
+	insert := func() error {
+		_, err := sqlDB.ExecContext(ctx, `
+			INSERT INTO unmatched_external (source, source_id, payload, lat, lng, geom, last_attempted)
+			VALUES ($1, $2, $3, $4, $5, ST_SetSRID(ST_MakePoint($5, $4), 4326), NOW())
+		`, "wheelmap", "wm/999", `{}`, 60.0, 25.0)
+		return err
+	}
+
+	if err := insert(); err != nil {
+		t.Fatalf("first insert: %v", err)
+	}
+	if err := insert(); err == nil {
+		t.Error("second insert with same (source, source_id) should fail the UNIQUE constraint, got nil error")
+	}
+}
