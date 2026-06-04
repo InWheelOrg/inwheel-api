@@ -33,7 +33,10 @@ func TransformNode(osmID int64, lat, lng float64, tags map[string]string, catego
 		Rank:     DeriveRank(category, tags),
 		Tags:     placeTags,
 		ExternalIDs: models.ExternalIDs{
-			"osm": fmt.Sprintf("node/%d", osmID),
+			"osm": models.ExternalRef{
+				ID:         fmt.Sprintf("node/%d", osmID),
+				Confidence: 1.0,
+			},
 		},
 		Source: "osm",
 		Status: models.PlaceStatusActive,

@@ -142,8 +142,11 @@ func TestFullImport_AndorraFixture(t *testing.T) {
 				t.Errorf("status = %q, want %q", got.Status, models.PlaceStatusActive)
 			}
 			wantExternalID := fmt.Sprintf("node/%d", p.osmID)
-			if got.ExternalIDs["osm"] != wantExternalID {
-				t.Errorf("external_ids[osm] = %q, want %q", got.ExternalIDs["osm"], wantExternalID)
+			if got.ExternalIDs["osm"].ID != wantExternalID {
+				t.Errorf("external_ids[osm].id = %q, want %q", got.ExternalIDs["osm"].ID, wantExternalID)
+			}
+			if got.ExternalIDs["osm"].Confidence != 1.0 {
+				t.Errorf("external_ids[osm].confidence = %v, want 1.0", got.ExternalIDs["osm"].Confidence)
 			}
 			for k, v := range p.tagSubset {
 				if got.Tags[k] != v {

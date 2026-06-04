@@ -204,6 +204,25 @@ components:
           type: boolean
           readOnly: true
 
+    ExternalRef:
+      x-go-type: models.ExternalRef
+      x-go-type-import:
+        name: models
+        path: github.com/InWheelOrg/inwheel-api/pkg/models
+      type: object
+      required: [id, confidence]
+      properties:
+        id:
+          type: string
+        confidence:
+          type: number
+          format: double
+          minimum: 0
+          maximum: 1
+        matched_at:
+          type: string
+          format: date-time
+
     Place:
       x-go-type: models.Place
       x-go-type-import:
@@ -256,7 +275,7 @@ components:
         external_ids:
           type: object
           additionalProperties:
-            type: string
+            $ref: "#/components/schemas/ExternalRef"
         status:
           $ref: "#/components/schemas/PlaceStatus"
           readOnly: true
