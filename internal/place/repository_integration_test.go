@@ -121,8 +121,8 @@ func TestUnmatchedExternal_TableRoundTrip(t *testing.T) {
 	}
 
 	_, err = sqlDB.ExecContext(ctx, `
-		INSERT INTO unmatched_external (source, source_id, payload, lat, lng, geom, last_attempted)
-		VALUES ($1, $2, $3, $4, $5, ST_SetSRID(ST_MakePoint($5, $4), 4326), NOW())
+		INSERT INTO unmatched_external (source, source_id, payload, lat, lng, geom)
+		VALUES ($1, $2, $3, $4, $5, ST_SetSRID(ST_MakePoint($5, $4), 4326))
 	`, "wheelmap", "wm/456", `{"name":"Test Cafe","category":"cafe"}`, 60.1699, 24.9384)
 	if err != nil {
 		t.Fatalf("insert into unmatched_external: %v", err)
@@ -139,6 +139,22 @@ func TestUnmatchedExternal_TableRoundTrip(t *testing.T) {
 	if count != 1 {
 		t.Errorf("count = %d, want 1", count)
 	}
+
+	// Verify geometry is stored with correct coordinate order (lng=X, lat=Y).
+	var storedLng, storedLat float64
+	geomRow := sqlDB.QueryRowContext(ctx,
+		"SELECT ST_X(geom::geometry), ST_Y(geom::geometry) FROM unmatched_external WHERE source = $1 AND source_id = $2",
+		"wheelmap", "wm/456",
+	)
+	if err := geomRow.Scan(&storedLng, &storedLat); err != nil {
+		t.Fatalf("geom query: %v", err)
+	}
+	if storedLng < 24.938 || storedLng > 24.939 {
+		t.Errorf("geom X (lng) = %v, want ~24.9384", storedLng)
+	}
+	if storedLat < 60.169 || storedLat > 60.171 {
+		t.Errorf("geom Y (lat) = %v, want ~60.1699", storedLat)
+	}
 }
 
 func TestUnmatchedExternal_UniqueConstraint(t *testing.T) {
@@ -149,11 +165,14 @@ func TestUnmatchedExternal_UniqueConstraint(t *testing.T) {
 	}
 	defer cleanup()
 
-	sqlDB, _ := db.DB()
+	sqlDB, err := db.DB()
+	if err != nil {
+		t.Fatalf("get sql.DB: %v", err)
+	}
 	insert := func() error {
 		_, err := sqlDB.ExecContext(ctx, `
-			INSERT INTO unmatched_external (source, source_id, payload, lat, lng, geom, last_attempted)
-			VALUES ($1, $2, $3, $4, $5, ST_SetSRID(ST_MakePoint($5, $4), 4326), NOW())
+			INSERT INTO unmatched_external (source, source_id, payload, lat, lng, geom)
+			VALUES ($1, $2, $3, $4, $5, ST_SetSRID(ST_MakePoint($5, $4), 4326))
 		`, "wheelmap", "wm/999", `{}`, 60.0, 25.0)
 		return err
 	}

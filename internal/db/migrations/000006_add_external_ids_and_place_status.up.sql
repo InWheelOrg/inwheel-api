@@ -17,7 +17,7 @@ CREATE TABLE unmatched_external (
     lat            DOUBLE PRECISION NOT NULL,
     lng            DOUBLE PRECISION NOT NULL,
     geom           GEOGRAPHY(POINT, 4326) NOT NULL,
-    last_attempted TIMESTAMPTZ      NOT NULL,
+    last_attempted TIMESTAMPTZ      NOT NULL DEFAULT NOW(),
     attempts       INT              NOT NULL DEFAULT 1,
     UNIQUE (source, source_id)
 );
