@@ -26,12 +26,12 @@
 //
 //     - distance: linear falloff, 1.0 at 0 m, 0.0 at 50 m.
 //     - name:     token-set Jaccard over normalized words. "Café Pascal"
-//                 and "PASCAL CAFE." normalize to the same tokens.
+//     and "PASCAL CAFE." normalize to the same tokens.
 //     - address:  1.0 if street + house number match, 0.5 if street only,
-//                 0.0 otherwise. If either side lacks an address the
-//                 signal is dropped and its weight is redistributed
-//                 proportionally between distance and name (final score
-//                 still in [0, 1]).
+//     0.0 otherwise. If either side lacks an address the
+//     signal is dropped and its weight is redistributed
+//     proportionally between distance and name (final score
+//     still in [0, 1]).
 //
 //     Weighted sum: 0.5*distance + 0.4*name + 0.1*address.
 //

@@ -17,10 +17,9 @@ func approxEqual(a, b float64) bool {
 }
 
 func TestDistanceScore(t *testing.T) {
-	// Helsinki city centre: 60.1699, 24.9384.
 	// At this latitude, ~0.000449 deg lat is ~50 m.
-	const lat = 60.1699
-	const lng = 24.9384
+	const lat = 46.4628
+	const lng = 6.8417
 
 	cases := []struct {
 		name         string
@@ -78,13 +77,13 @@ func TestAddressScore(t *testing.T) {
 		wantScore   float64
 		wantPresent bool
 	}{
-		{"full match", "Mannerheimintie", "10", "Mannerheimintie", "10", 1.0, true},
-		{"street match, both have house, house differs", "Mannerheimintie", "10", "Mannerheimintie", "12", 0.5, true},
-		{"street match, only one side has house", "Mannerheimintie", "10", "Mannerheimintie", "", 0.5, true},
-		{"street match, neither has house", "Mannerheimintie", "", "Mannerheimintie", "", 0.5, true},
-		{"street mismatch", "Mannerheimintie", "10", "Aleksanterinkatu", "10", 0.0, true},
-		{"record has no street", "", "10", "Mannerheimintie", "10", 0.0, false},
-		{"candidate has no street", "Mannerheimintie", "10", "", "10", 0.0, false},
+		{"full match", "Rue du Simplon", "10", "Rue du Simplon", "10", 1.0, true},
+		{"street match, both have house, house differs", "Rue du Simplon", "10", "Rue du Simplon", "12", 0.5, true},
+		{"street match, only one side has house", "Rue du Simplon", "10", "Rue du Simplon", "", 0.5, true},
+		{"street match, neither has house", "Rue du Simplon", "", "Rue du Simplon", "", 0.5, true},
+		{"street mismatch", "Rue du Simplon", "10", "Grand-Rue", "10", 0.0, true},
+		{"record has no street", "", "10", "Rue du Simplon", "10", 0.0, false},
+		{"candidate has no street", "Rue du Simplon", "10", "", "10", 0.0, false},
 		{"both have no street", "", "", "", "", 0.0, false},
 		{"street match with diacritic difference", "Bulevárdi", "1", "Bulevardi", "1", 1.0, true},
 	}
