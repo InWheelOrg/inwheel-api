@@ -58,3 +58,40 @@ func (r *Repository) UpsertBatch(ctx context.Context, places []models.Place) err
 	}
 	return nil
 }
+
+// FindCandidates returns active places within radiusM metres of (lat, lng)
+// whose category is in categories, ordered by ascending distance, capped at 32.
+// Satisfies identity.CandidateRepo.
+func (r *Repository) FindCandidates(
+	ctx context.Context,
+	lat, lng, radiusM float64,
+	categories []models.Category,
+) ([]models.Place, error) {
+	if len(categories) == 0 {
+		return nil, nil
+	}
+	point := fmt.Sprintf("SRID=4326;POINT(%f %f)", lng, lat)
+	var out []models.Place
+	tx := r.db.WithContext(ctx).
+		Where("status = ?", models.PlaceStatusActive).
+		Where("category IN ?", categories).
+		Where("ST_DWithin(geom, ?::geography, ?)", point, radiusM).
+		Order(fmt.Sprintf("ST_Distance(geom, '%s'::geography) ASC", point)).
+		Limit(32).
+		Find(&out)
+	if tx.Error != nil {
+		return nil, fmt.Errorf("find candidates: %w", tx.Error)
+	}
+	return out, nil
+}
+
+// Compile-time assertion that *Repository satisfies identity.CandidateRepo.
+// The assertion lives here so a signature drift in either side fails the build
+// at the boundary, not at the first caller.
+var _ interface {
+	FindCandidates(
+		ctx context.Context,
+		lat, lng, radiusM float64,
+		categories []models.Category,
+	) ([]models.Place, error)
+} = (*Repository)(nil)
