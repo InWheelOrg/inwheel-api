@@ -70,13 +70,17 @@ func (r *Repository) FindCandidates(
 	if len(categories) == 0 {
 		return nil, nil
 	}
-	point := fmt.Sprintf("SRID=4326;POINT(%f %f)", lng, lat)
 	var out []models.Place
 	tx := r.db.WithContext(ctx).
 		Where("status = ?", models.PlaceStatusActive).
 		Where("category IN ?", categories).
-		Where("ST_DWithin(geom, ?::geography, ?)", point, radiusM).
-		Order(gorm.Expr("ST_Distance(geom, ?::geography) ASC", point)).
+		Where("ST_DWithin(geography(ST_Point(lng, lat)), geography(ST_Point(?, ?)), ?)", lng, lat, radiusM).
+		Clauses(clause.OrderBy{
+			Expression: clause.Expr{
+				SQL:  "ST_Distance(geography(ST_Point(lng, lat)), geography(ST_Point(?, ?))) ASC",
+				Vars: []interface{}{lng, lat},
+			},
+		}).
 		Limit(32).
 		Find(&out)
 	if tx.Error != nil {
