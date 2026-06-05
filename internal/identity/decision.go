@@ -9,12 +9,13 @@ package identity
 type Kind int
 
 const (
-	// KindConfident means the matcher found a place with score >= ConfidentThreshold.
-	KindConfident Kind = iota
+	// KindNoMatch is the zero value, returned on errors and when no candidate
+	// scored at or above LowConfidenceThreshold.
+	KindNoMatch Kind = iota
 	// KindLowConfidence means the best score was in [LowConfidenceThreshold, ConfidentThreshold).
 	KindLowConfidence
-	// KindNoMatch means no candidate scored at or above LowConfidenceThreshold.
-	KindNoMatch
+	// KindConfident means the matcher found a place with score >= ConfidentThreshold.
+	KindConfident
 )
 
 // String returns a stable lowercase tag for logs and metrics.
