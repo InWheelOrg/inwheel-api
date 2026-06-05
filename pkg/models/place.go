@@ -201,3 +201,20 @@ func (e ExternalIDs) Value() (driver.Value, error) {
 	}
 	return json.Marshal(e)
 }
+
+// UnmatchedExternal is one queued non-OSM record awaiting a future match.
+// Rows live in the unmatched_external table and are drained by the retry
+// sweep after each OSM ingest of the surrounding region.
+type UnmatchedExternal struct {
+	ID            int64           `gorm:"primaryKey"`
+	Source        string          `gorm:"not null"`
+	SourceID      string          `gorm:"column:source_id;not null"`
+	Lat           float64         `gorm:"not null"`
+	Lng           float64         `gorm:"not null"`
+	Payload       json.RawMessage `gorm:"type:jsonb;not null"`
+	LastAttempted time.Time       `gorm:"column:last_attempted;not null"`
+	Attempts      int             `gorm:"not null;default:1"`
+}
+
+// TableName tells GORM the explicit table name (no pluralisation of "unmatched").
+func (UnmatchedExternal) TableName() string { return "unmatched_external" }
