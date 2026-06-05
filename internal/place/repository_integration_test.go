@@ -107,6 +107,105 @@ func TestUpsertBatch_EmptySliceIsNoOp(t *testing.T) {
 	}
 }
 
+func TestFindCandidates_EmptyCategoriesReturnsNil(t *testing.T) {
+	ctx := context.Background()
+	db, cleanup, err := testhelpers.StartPostgres(ctx)
+	if err != nil {
+		t.Fatalf("start postgres: %v", err)
+	}
+	defer cleanup()
+
+	repo := place.NewRepository(db)
+	got, err := repo.FindCandidates(ctx, 46.4628, 6.8417, 50, nil)
+	if err != nil {
+		t.Fatalf("FindCandidates: %v", err)
+	}
+	if got != nil {
+		t.Errorf("got %v, want nil", got)
+	}
+}
+
+func TestFindCandidates_RadiusStatusCategoryFilters(t *testing.T) {
+	ctx := context.Background()
+	db, cleanup, err := testhelpers.StartPostgres(ctx)
+	if err != nil {
+		t.Fatalf("start postgres: %v", err)
+	}
+	defer cleanup()
+
+	repo := place.NewRepository(db)
+
+	// At this latitude, ~0.000225 deg lat ≈ 25 m; ~0.000898 deg lat ≈ 100 m.
+	const cLat, cLng = 46.4628, 6.8417
+
+	seed := []models.Place{
+		// near + matching category + active → returned
+		{OSMID: 1, OSMType: models.OSMNode, Name: "Near Cafe", Lat: cLat + 0.0001, Lng: cLng, Category: models.CategoryCafe, Rank: models.RankEstablishment, Source: "osm", Status: models.PlaceStatusActive},
+		// far (~100 m) + matching category + active → excluded by radius
+		{OSMID: 2, OSMType: models.OSMNode, Name: "Far Cafe", Lat: cLat + 0.000898, Lng: cLng, Category: models.CategoryCafe, Rank: models.RankEstablishment, Source: "osm", Status: models.PlaceStatusActive},
+		// near + wrong category + active → excluded by category filter
+		{OSMID: 3, OSMType: models.OSMNode, Name: "Near Pharmacy", Lat: cLat, Lng: cLng + 0.0001, Category: models.CategoryHealthcare, Rank: models.RankEstablishment, Source: "osm", Status: models.PlaceStatusActive},
+		// near + matching category + closed → excluded by status filter
+		{OSMID: 4, OSMType: models.OSMNode, Name: "Closed Cafe", Lat: cLat - 0.0001, Lng: cLng, Category: models.CategoryCafe, Rank: models.RankEstablishment, Source: "osm", Status: models.PlaceStatusClosed},
+	}
+	if err := repo.UpsertBatch(ctx, seed); err != nil {
+		t.Fatalf("seed: %v", err)
+	}
+
+	got, err := repo.FindCandidates(ctx, cLat, cLng, 50, []models.Category{models.CategoryCafe})
+	if err != nil {
+		t.Fatalf("FindCandidates: %v", err)
+	}
+	if len(got) != 1 {
+		t.Fatalf("got %d candidates, want 1: %v", len(got), names(got))
+	}
+	if got[0].Name != "Near Cafe" {
+		t.Errorf("got %q, want %q", got[0].Name, "Near Cafe")
+	}
+}
+
+func TestFindCandidates_OrdersByDistance(t *testing.T) {
+	ctx := context.Background()
+	db, cleanup, err := testhelpers.StartPostgres(ctx)
+	if err != nil {
+		t.Fatalf("start postgres: %v", err)
+	}
+	defer cleanup()
+
+	repo := place.NewRepository(db)
+
+	const cLat, cLng = 46.4628, 6.8417
+
+	seed := []models.Place{
+		// ~40 m north
+		{OSMID: 1, OSMType: models.OSMNode, Name: "Far", Lat: cLat + 0.00036, Lng: cLng, Category: models.CategoryCafe, Rank: models.RankEstablishment, Source: "osm", Status: models.PlaceStatusActive},
+		// ~10 m north (closer)
+		{OSMID: 2, OSMType: models.OSMNode, Name: "Near", Lat: cLat + 0.00009, Lng: cLng, Category: models.CategoryCafe, Rank: models.RankEstablishment, Source: "osm", Status: models.PlaceStatusActive},
+	}
+	if err := repo.UpsertBatch(ctx, seed); err != nil {
+		t.Fatalf("seed: %v", err)
+	}
+
+	got, err := repo.FindCandidates(ctx, cLat, cLng, 50, []models.Category{models.CategoryCafe})
+	if err != nil {
+		t.Fatalf("FindCandidates: %v", err)
+	}
+	if len(got) != 2 {
+		t.Fatalf("got %d candidates, want 2", len(got))
+	}
+	if got[0].Name != "Near" || got[1].Name != "Far" {
+		t.Errorf("order = [%q, %q], want [\"Near\", \"Far\"]", got[0].Name, got[1].Name)
+	}
+}
+
+func names(ps []models.Place) []string {
+	out := make([]string, len(ps))
+	for i, p := range ps {
+		out[i] = p.Name
+	}
+	return out
+}
+
 func TestUnmatchedExternal_TableRoundTrip(t *testing.T) {
 	ctx := context.Background()
 	db, cleanup, err := testhelpers.StartPostgres(ctx)

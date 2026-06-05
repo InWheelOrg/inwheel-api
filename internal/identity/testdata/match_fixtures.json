@@ -1,0 +1,67 @@
+[
+  {
+    "name": "confident: identical name, coincident point, matching address",
+    "record": {
+      "Name": "Café Pascal", "Lat": 46.4628, "Lng": 6.8417, "Category": "cafe",
+      "Street": "Rue du Simplon", "HouseNumber": "10"
+    },
+    "candidates": [
+      {"id": "p1", "name": "Café Pascal", "lat": 46.4628, "lng": 6.8417, "category": "cafe",
+       "tags": {"addr:street": "Rue du Simplon", "addr:housenumber": "10"}}
+    ],
+    "expected": {"Kind": "confident", "MatchedPlaceID": "p1", "MinConfidence": 0.95}
+  },
+  {
+    "name": "low confidence: 25 m away, name match, no address",
+    "record": {"Name": "Pascal", "Lat": 46.4628, "Lng": 6.8417, "Category": "cafe"},
+    "candidates": [
+      {"id": "p1", "name": "Pascal", "lat": 46.462575, "lng": 6.8417, "category": "cafe"}
+    ],
+    "expected": {"Kind": "low_confidence", "MatchedPlaceID": "p1", "MinConfidence": 0.55, "MaxConfidence": 0.80}
+  },
+  {
+    "name": "no match: no candidates returned",
+    "record": {"Name": "Pascal", "Lat": 46.4628, "Lng": 6.8417, "Category": "cafe"},
+    "candidates": [],
+    "expected": {"Kind": "no_match"}
+  },
+  {
+    "name": "no match: single candidate scores below floor",
+    "record": {"Name": "Pascal", "Lat": 46.4628, "Lng": 6.8417, "Category": "cafe"},
+    "candidates": [
+      {"id": "p1", "name": "Roma", "lat": 46.46316, "lng": 6.8417, "category": "cafe"}
+    ],
+    "expected": {"Kind": "no_match"}
+  },
+  {
+    "name": "argmax: highest-scoring candidate wins",
+    "record": {"Name": "Pascal", "Lat": 46.4628, "Lng": 6.8417, "Category": "cafe"},
+    "candidates": [
+      {"id": "p1", "name": "Roma", "lat": 46.4628, "lng": 6.8417, "category": "cafe"},
+      {"id": "p2", "name": "Pascal", "lat": 46.4628, "lng": 6.8417, "category": "cafe"}
+    ],
+    "expected": {"Kind": "confident", "MatchedPlaceID": "p2", "MinConfidence": 0.55}
+  },
+  {
+    "name": "address absent: still confident on strong name + distance",
+    "record": {"Name": "Pascal", "Lat": 46.4628, "Lng": 6.8417, "Category": "cafe"},
+    "candidates": [
+      {"id": "p1", "name": "Pascal", "lat": 46.4628, "lng": 6.8417, "category": "cafe"}
+    ],
+    "expected": {"Kind": "confident", "MatchedPlaceID": "p1", "MinConfidence": 0.95}
+  },
+  {
+    "name": "diacritic normalization: Café matches Cafe",
+    "record": {"Name": "Café Pascal", "Lat": 46.4628, "Lng": 6.8417, "Category": "cafe"},
+    "candidates": [
+      {"id": "p1", "name": "Cafe Pascal", "lat": 46.4628, "lng": 6.8417, "category": "cafe"}
+    ],
+    "expected": {"Kind": "confident", "MatchedPlaceID": "p1", "MinConfidence": 0.95}
+  },
+  {
+    "name": "category incompatible: fake repo returns empty",
+    "record": {"Name": "Pascal Pharmacy", "Lat": 46.4628, "Lng": 6.8417, "Category": "healthcare"},
+    "candidates": [],
+    "expected": {"Kind": "no_match"}
+  }
+]
