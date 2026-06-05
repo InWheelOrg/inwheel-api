@@ -6,6 +6,8 @@
 package identity
 
 import (
+	"sort"
+
 	"github.com/InWheelOrg/inwheel-api/pkg/models"
 )
 
@@ -21,5 +23,14 @@ var compat = map[models.Category]map[models.Category]bool{
 // Compatible returns the candidate categories that an incoming record of
 // category c may match against.
 func Compatible(c models.Category) []models.Category {
-	return nil
+	set, ok := compat[c]
+	if !ok {
+		return []models.Category{c}
+	}
+	out := make([]models.Category, 0, len(set))
+	for k := range set {
+		out = append(out, k)
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i] < out[j] })
+	return out
 }
