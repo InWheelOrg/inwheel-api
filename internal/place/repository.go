@@ -76,7 +76,7 @@ func (r *Repository) FindCandidates(
 		Where("status = ?", models.PlaceStatusActive).
 		Where("category IN ?", categories).
 		Where("ST_DWithin(geom, ?::geography, ?)", point, radiusM).
-		Order(fmt.Sprintf("ST_Distance(geom, '%s'::geography) ASC", point)).
+		Order(gorm.Expr("ST_Distance(geom, ?::geography) ASC", point)).
 		Limit(32).
 		Find(&out)
 	if tx.Error != nil {
