@@ -26,19 +26,12 @@ var businessSuffixes = map[string]struct{}{
 	"ab":   {},
 }
 
-// diacriticStripper NFKD-decomposes input and removes combining marks,
-// yielding ASCII-folded text for Latin-script languages.
-var diacriticStripper = transform.Chain(
-	norm.NFKD,
-	runes.Remove(runes.In(unicode.Mn)),
-	norm.NFC,
-)
-
 // Normalize lowercases s, strips diacritics, replaces non-alphanumeric runes
 // with spaces, tokenizes on whitespace, and drops tokens in businessSuffixes.
 // Returns nil for empty or all-suffix input.
 func Normalize(s string) []string {
-	folded, _, err := transform.String(diacriticStripper, s)
+	t := transform.Chain(norm.NFKD, runes.Remove(runes.In(unicode.Mn)), norm.NFC)
+	folded, _, err := transform.String(t, s)
 	if err != nil {
 		folded = s
 	}
