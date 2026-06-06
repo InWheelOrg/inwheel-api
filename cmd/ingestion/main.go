@@ -12,9 +12,13 @@ import (
 	"os"
 	"time"
 
+	"gorm.io/gorm"
+
 	"github.com/InWheelOrg/inwheel-api/internal/db"
+	"github.com/InWheelOrg/inwheel-api/internal/identity"
 	"github.com/InWheelOrg/inwheel-api/internal/place"
 	"github.com/InWheelOrg/inwheel-api/internal/sources"
+	"github.com/InWheelOrg/inwheel-api/internal/unmatched"
 )
 
 const batchSize = 1000
@@ -69,7 +73,6 @@ func run(ctx context.Context, sourceName, command string, cfg config) error {
 	if err != nil {
 		return err
 	}
-
 	gormDB, err := db.Connect(db.Config{
 		Host:     cfg.DBHost,
 		Port:     cfg.DBPort,
@@ -84,22 +87,40 @@ func run(ctx context.Context, sourceName, command string, cfg config) error {
 	if err := db.Migrate(gormDB); err != nil {
 		return fmt.Errorf("db migrate: %w", err)
 	}
+	return runPipeline(ctx, src, command, gormDB)
+}
 
-	repo := place.NewRepository(gormDB)
-	b := &batcher{size: batchSize, flush: repo.UpsertBatch}
+// runPipeline executes one ingest of src against gormDB. Canonical sources go
+// through the batched upsert path; external sources go through identity.Resolver.
+func runPipeline(ctx context.Context, src sources.Source, command string, gormDB *gorm.DB) error {
+	placesRepo := place.NewRepository(gormDB)
+	unmatchedRepo := unmatched.NewRepository(gormDB)
 
-	if err := dispatch(ctx, src, command, b.sink, nil); err != nil {
+	b := &batcher{size: batchSize, flush: placesRepo.UpsertBatch}
+
+	resolver := &identity.Resolver{
+		Candidates: placesRepo,
+		Places:     placesRepo,
+		Unmatched:  unmatchedRepo,
+		Now:        time.Now,
+	}
+	counters := &resolveCounters{}
+	recordSink := buildRecordSink(resolver, counters)
+
+	if err := dispatch(ctx, src, command, b.sink, recordSink); err != nil {
 		return fmt.Errorf("source %q: %w", src.Name(), err)
 	}
-
 	if err := b.flushNow(ctx); err != nil {
 		return fmt.Errorf("final flush: %w", err)
 	}
-
 	slog.Info("ingestion complete",
 		"source", src.Name(),
 		"command", command,
 		"written", b.written,
+		"confident", counters.confident,
+		"low_confidence", counters.lowConfidence,
+		"no_match", counters.noMatch,
+		"errors", counters.errors,
 	)
 	return nil
 }
@@ -150,5 +171,39 @@ func dispatchExternal(ctx context.Context, src sources.Source, command string, s
 		return ds.DiffSync(ctx, time.Time{}, sink)
 	default:
 		return fmt.Errorf("unknown command: %q", command)
+	}
+}
+
+// resolveCounters tallies external-source outcomes for the run summary.
+type resolveCounters struct {
+	confident     int
+	lowConfidence int
+	noMatch       int
+	errors        int
+}
+
+// buildRecordSink returns a RecordSink that runs resolver on each record,
+// tallies outcomes into counters, and logs but does not abort on per-record errors.
+func buildRecordSink(resolver *identity.Resolver, counters *resolveCounters) sources.RecordSink {
+	return func(ctx context.Context, r identity.Record) error {
+		d, err := resolver.Resolve(ctx, r)
+		if err != nil {
+			counters.errors++
+			slog.Warn("resolve failed",
+				"source", r.Source,
+				"source_id", r.SourceID,
+				"error", err,
+			)
+			return nil
+		}
+		switch d.Kind {
+		case identity.KindConfident:
+			counters.confident++
+		case identity.KindLowConfidence:
+			counters.lowConfidence++
+		case identity.KindNoMatch:
+			counters.noMatch++
+		}
+		return nil
 	}
 }
