@@ -88,7 +88,7 @@ func run(ctx context.Context, sourceName, command string, cfg config) error {
 	repo := place.NewRepository(gormDB)
 	b := &batcher{size: batchSize, flush: repo.UpsertBatch}
 
-	if err := dispatch(ctx, src, command, b.sink); err != nil {
+	if err := dispatch(ctx, src, command, b.sink, nil); err != nil {
 		return fmt.Errorf("source %q: %w", src.Name(), err)
 	}
 
@@ -104,7 +104,18 @@ func run(ctx context.Context, sourceName, command string, cfg config) error {
 	return nil
 }
 
-func dispatch(ctx context.Context, src sources.Source, command string, sink sources.Sink) error {
+func dispatch(ctx context.Context, src sources.Source, command string, sink sources.Sink, recordSink sources.RecordSink) error {
+	switch src.Kind() {
+	case sources.SourceKindCanonical:
+		return dispatchCanonical(ctx, src, command, sink)
+	case sources.SourceKindExternal:
+		return dispatchExternal(ctx, src, command, recordSink)
+	default:
+		return fmt.Errorf("source %q has unknown kind: %v", src.Name(), src.Kind())
+	}
+}
+
+func dispatchCanonical(ctx context.Context, src sources.Source, command string, sink sources.Sink) error {
 	switch command {
 	case "full-import":
 		fi, ok := src.(sources.FullImporter)
@@ -114,6 +125,25 @@ func dispatch(ctx context.Context, src sources.Source, command string, sink sour
 		return fi.FullImport(ctx, sink)
 	case "diff-sync":
 		ds, ok := src.(sources.DiffSyncer)
+		if !ok {
+			return fmt.Errorf("source %q does not support diff-sync", src.Name())
+		}
+		return ds.DiffSync(ctx, time.Time{}, sink)
+	default:
+		return fmt.Errorf("unknown command: %q", command)
+	}
+}
+
+func dispatchExternal(ctx context.Context, src sources.Source, command string, sink sources.RecordSink) error {
+	switch command {
+	case "full-import":
+		fi, ok := src.(sources.ExternalFullImporter)
+		if !ok {
+			return fmt.Errorf("source %q does not support full-import", src.Name())
+		}
+		return fi.FullImport(ctx, sink)
+	case "diff-sync":
+		ds, ok := src.(sources.ExternalDiffSyncer)
 		if !ok {
 			return fmt.Errorf("source %q does not support diff-sync", src.Name())
 		}
