@@ -10,6 +10,7 @@ package place_test
 import (
 	"context"
 	"testing"
+	"time"
 
 	"github.com/InWheelOrg/inwheel-api/internal/place"
 	"github.com/InWheelOrg/inwheel-api/internal/testhelpers"
@@ -319,6 +320,168 @@ func TestUnmatchedExternal_ColumnDefaults(t *testing.T) {
 	}
 	if lastAttempted == nil {
 		t.Error("last_attempted is NULL, want a timestamp from DEFAULT NOW()")
+	}
+}
+
+func TestAttachExternalRef_EmptyMap(t *testing.T) {
+	ctx := context.Background()
+	db, cleanup, err := testhelpers.StartPostgres(ctx)
+	if err != nil {
+		t.Fatalf("start postgres: %v", err)
+	}
+	defer cleanup()
+
+	repo := place.NewRepository(db)
+
+	seed := []models.Place{
+		{OSMID: 10, OSMType: models.OSMNode, Name: "Vevey Cafe", Lat: 46.4628, Lng: 6.8417, Category: models.CategoryCafe, Rank: models.RankEstablishment, Source: "osm", Status: models.PlaceStatusActive},
+	}
+	if err := repo.UpsertBatch(ctx, seed); err != nil {
+		t.Fatalf("seed: %v", err)
+	}
+
+	var seeded models.Place
+	if err := db.Where("osm_id = ?", 10).First(&seeded).Error; err != nil {
+		t.Fatalf("fetch seeded place: %v", err)
+	}
+
+	matchedAt := time.Date(2026, 6, 5, 12, 0, 0, 0, time.UTC)
+	ref := models.ExternalRef{ID: "wm/10", Confidence: 0.9, MatchedAt: matchedAt}
+	if err := repo.AttachExternalRef(ctx, seeded.ID, "wheelmap", ref); err != nil {
+		t.Fatalf("AttachExternalRef: %v", err)
+	}
+
+	var got models.Place
+	if err := db.Where("osm_id = ?", 10).First(&got).Error; err != nil {
+		t.Fatalf("reload place: %v", err)
+	}
+	wm, ok := got.ExternalIDs["wheelmap"]
+	if !ok {
+		t.Fatal("external_ids[wheelmap] missing")
+	}
+	if wm.ID != "wm/10" {
+		t.Errorf("ID = %q, want %q", wm.ID, "wm/10")
+	}
+	if wm.Confidence != 0.9 {
+		t.Errorf("Confidence = %v, want 0.9", wm.Confidence)
+	}
+	if wm.MatchedAt.UnixMicro() != matchedAt.Truncate(time.Microsecond).UnixMicro() {
+		t.Errorf("MatchedAt = %v, want %v", wm.MatchedAt, matchedAt)
+	}
+}
+
+func TestAttachExternalRef_ExistingDifferentKey(t *testing.T) {
+	ctx := context.Background()
+	db, cleanup, err := testhelpers.StartPostgres(ctx)
+	if err != nil {
+		t.Fatalf("start postgres: %v", err)
+	}
+	defer cleanup()
+
+	repo := place.NewRepository(db)
+
+	seed := []models.Place{
+		{OSMID: 11, OSMType: models.OSMNode, Name: "Vevey Pharmacy", Lat: 46.4628, Lng: 6.8417, Category: models.CategoryHealthcare, Rank: models.RankEstablishment, Source: "osm", Status: models.PlaceStatusActive, ExternalIDs: models.ExternalIDs{"osm": models.ExternalRef{ID: "node/123", Confidence: 1.0}}},
+	}
+	if err := repo.UpsertBatch(ctx, seed); err != nil {
+		t.Fatalf("seed: %v", err)
+	}
+
+	var seeded models.Place
+	if err := db.Where("osm_id = ?", 11).First(&seeded).Error; err != nil {
+		t.Fatalf("fetch seeded place: %v", err)
+	}
+
+	matchedAt := time.Date(2026, 6, 5, 12, 0, 0, 0, time.UTC)
+	ref := models.ExternalRef{ID: "wm/11", Confidence: 0.85, MatchedAt: matchedAt}
+	if err := repo.AttachExternalRef(ctx, seeded.ID, "wheelmap", ref); err != nil {
+		t.Fatalf("AttachExternalRef: %v", err)
+	}
+
+	var got models.Place
+	if err := db.Where("osm_id = ?", 11).First(&got).Error; err != nil {
+		t.Fatalf("reload place: %v", err)
+	}
+	if got.ExternalIDs["osm"].ID != "node/123" {
+		t.Errorf("osm entry changed: ID = %q, want %q", got.ExternalIDs["osm"].ID, "node/123")
+	}
+	if got.ExternalIDs["osm"].Confidence != 1.0 {
+		t.Errorf("osm Confidence = %v, want 1.0", got.ExternalIDs["osm"].Confidence)
+	}
+	wm, ok := got.ExternalIDs["wheelmap"]
+	if !ok {
+		t.Fatal("external_ids[wheelmap] missing")
+	}
+	if wm.ID != "wm/11" {
+		t.Errorf("wheelmap ID = %q, want %q", wm.ID, "wm/11")
+	}
+	if wm.Confidence != 0.85 {
+		t.Errorf("wheelmap Confidence = %v, want 0.85", wm.Confidence)
+	}
+}
+
+func TestAttachExternalRef_ExistingSameKey(t *testing.T) {
+	ctx := context.Background()
+	db, cleanup, err := testhelpers.StartPostgres(ctx)
+	if err != nil {
+		t.Fatalf("start postgres: %v", err)
+	}
+	defer cleanup()
+
+	repo := place.NewRepository(db)
+
+	oldTime := time.Date(2025, 1, 1, 0, 0, 0, 0, time.UTC)
+	seed := []models.Place{
+		{OSMID: 12, OSMType: models.OSMNode, Name: "Vevey Restaurant", Lat: 46.4628, Lng: 6.8417, Category: models.CategoryRestaurant, Rank: models.RankEstablishment, Source: "osm", Status: models.PlaceStatusActive, ExternalIDs: models.ExternalIDs{"wheelmap": models.ExternalRef{ID: "old", Confidence: 0.6, MatchedAt: oldTime}}},
+	}
+	if err := repo.UpsertBatch(ctx, seed); err != nil {
+		t.Fatalf("seed: %v", err)
+	}
+
+	var seeded models.Place
+	if err := db.Where("osm_id = ?", 12).First(&seeded).Error; err != nil {
+		t.Fatalf("fetch seeded place: %v", err)
+	}
+
+	newTime := time.Date(2026, 6, 5, 12, 0, 0, 0, time.UTC)
+	newRef := models.ExternalRef{ID: "new", Confidence: 0.95, MatchedAt: newTime}
+	if err := repo.AttachExternalRef(ctx, seeded.ID, "wheelmap", newRef); err != nil {
+		t.Fatalf("AttachExternalRef: %v", err)
+	}
+
+	var got models.Place
+	if err := db.Where("osm_id = ?", 12).First(&got).Error; err != nil {
+		t.Fatalf("reload place: %v", err)
+	}
+	wm, ok := got.ExternalIDs["wheelmap"]
+	if !ok {
+		t.Fatal("external_ids[wheelmap] missing after overwrite")
+	}
+	if wm.ID != "new" {
+		t.Errorf("ID = %q, want %q", wm.ID, "new")
+	}
+	if wm.Confidence != 0.95 {
+		t.Errorf("Confidence = %v, want 0.95", wm.Confidence)
+	}
+	if wm.MatchedAt.UnixMicro() != newTime.Truncate(time.Microsecond).UnixMicro() {
+		t.Errorf("MatchedAt = %v, want %v", wm.MatchedAt, newTime)
+	}
+}
+
+func TestAttachExternalRef_PlaceNotFound(t *testing.T) {
+	ctx := context.Background()
+	db, cleanup, err := testhelpers.StartPostgres(ctx)
+	if err != nil {
+		t.Fatalf("start postgres: %v", err)
+	}
+	defer cleanup()
+
+	repo := place.NewRepository(db)
+
+	ref := models.ExternalRef{ID: "wm/999", Confidence: 0.9, MatchedAt: time.Now()}
+	err = repo.AttachExternalRef(ctx, "00000000-0000-0000-0000-000000000000", "wheelmap", ref)
+	if err == nil {
+		t.Error("expected error for non-existent place, got nil")
 	}
 }
 
