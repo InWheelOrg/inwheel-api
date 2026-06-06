@@ -113,15 +113,19 @@ func runPipeline(ctx context.Context, src sources.Source, command string, gormDB
 	if err := b.flushNow(ctx); err != nil {
 		return fmt.Errorf("final flush: %w", err)
 	}
-	slog.Info("ingestion complete",
-		"source", src.Name(),
-		"command", command,
-		"written", b.written,
-		"confident", counters.confident,
-		"low_confidence", counters.lowConfidence,
-		"no_match", counters.noMatch,
-		"errors", counters.errors,
-	)
+	args := []any{"source", src.Name(), "command", command}
+	switch src.Kind() {
+	case sources.SourceKindCanonical:
+		args = append(args, "written", b.written)
+	case sources.SourceKindExternal:
+		args = append(args,
+			"confident", counters.confident,
+			"low_confidence", counters.lowConfidence,
+			"no_match", counters.noMatch,
+			"errors", counters.errors,
+		)
+	}
+	slog.Info("ingestion complete", args...)
 	return nil
 }
 
