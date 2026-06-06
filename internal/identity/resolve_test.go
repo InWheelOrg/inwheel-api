@@ -176,6 +176,33 @@ func TestResolve_NoMatchEnqueues(t *testing.T) {
 	if !got.LastAttempted.Equal(clock) {
 		t.Errorf("enqueued LastAttempted = %v, want %v", got.LastAttempted, clock)
 	}
+	if got.Attempts != 1 {
+		t.Errorf("enqueued Attempts = %d, want 1", got.Attempts)
+	}
+}
+
+func TestResolve_NoMatchNilPayloadDefaultsToEmptyObject(t *testing.T) {
+	enqueue := &fakeEnqueueRepo{}
+	r := &identity.Resolver{
+		Candidates: &candidatesRepo{candidates: nil},
+		Places:     &fakeAttachRepo{},
+		Unmatched:  enqueue,
+		Now:        fixedClock(time.Now()),
+	}
+	_, err := r.Resolve(context.Background(), identity.Record{
+		Source: "wheelmap", SourceID: "no-payload",
+		Name: "Nowhere", Lat: 46.4628, Lng: 6.8417, Category: models.CategoryCafe,
+		Payload: nil,
+	})
+	if err != nil {
+		t.Fatalf("Resolve: %v", err)
+	}
+	if len(enqueue.calls) != 1 {
+		t.Fatalf("Enqueue calls = %d, want 1", len(enqueue.calls))
+	}
+	if string(enqueue.calls[0].Payload) != "{}" {
+		t.Errorf("enqueued Payload = %s, want {}", enqueue.calls[0].Payload)
+	}
 }
 
 func TestResolve_NilClockDefaultsToTimeNow(t *testing.T) {

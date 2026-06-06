@@ -7,6 +7,7 @@ package identity
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"time"
 
@@ -24,21 +25,16 @@ type EnqueueRepo interface {
 }
 
 // Resolver runs Match on an incoming Record and applies the resulting Decision.
-// Candidates, Places, and Unmatched are typically backed by the same place
-// repository; the three interfaces stay separate so each call site declares
-// only what it needs.
 type Resolver struct {
 	Candidates CandidateRepo
 	Places     AttachRepo
 	Unmatched  EnqueueRepo
-	// Now returns the current time. Nil defaults to time.Now.
-	Now func() time.Time
+	Now        func() time.Time
 }
 
 // Resolve runs Match on rec and applies the resulting Decision: confident or
 // low-confidence matches attach an external ref to the matched place; no-match
-// enqueues rec for the retry sweep. The Decision is returned alongside any
-// error so the caller can update counters without re-matching.
+// enqueues rec for the retry sweep.
 func (r *Resolver) Resolve(ctx context.Context, rec Record) (Decision, error) {
 	now := r.Now
 	if now == nil {
@@ -59,17 +55,24 @@ func (r *Resolver) Resolve(ctx context.Context, rec Record) (Decision, error) {
 			return Decision{}, fmt.Errorf("attach external ref: %w", err)
 		}
 	case KindNoMatch:
+		payload := rec.Payload
+		if payload == nil {
+			payload = json.RawMessage("{}")
+		}
 		u := models.UnmatchedExternal{
 			Source:        rec.Source,
 			SourceID:      rec.SourceID,
 			Lat:           rec.Lat,
 			Lng:           rec.Lng,
-			Payload:       rec.Payload,
+			Payload:       payload,
 			LastAttempted: now(),
+			Attempts:      1,
 		}
 		if err := r.Unmatched.Enqueue(ctx, u); err != nil {
 			return Decision{}, fmt.Errorf("enqueue unmatched: %w", err)
 		}
+	default:
+		return Decision{}, fmt.Errorf("unhandled decision kind: %v", d.Kind)
 	}
 	return d, nil
 }
