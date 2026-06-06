@@ -8,11 +8,13 @@ package place
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
 
+	"github.com/InWheelOrg/inwheel-api/internal/identity"
 	"github.com/InWheelOrg/inwheel-api/pkg/models"
 )
 
@@ -89,6 +91,39 @@ func (r *Repository) FindCandidates(
 	return out, nil
 }
 
+// AttachExternalRef upserts ref into the place's external_ids map under the
+// given source key, atomically via jsonb_set. Returns an error if no row has
+// the given id.
+func (r *Repository) AttachExternalRef(
+	ctx context.Context,
+	placeID, source string,
+	ref models.ExternalRef,
+) error {
+	refJSON, err := json.Marshal(ref)
+	if err != nil {
+		return fmt.Errorf("marshal external ref: %w", err)
+	}
+	tx := r.db.WithContext(ctx).Exec(
+		`UPDATE places
+         SET external_ids = jsonb_set(
+                COALESCE(external_ids, '{}'::jsonb),
+                ARRAY[?],
+                ?::jsonb,
+                true
+            ),
+            updated_at = NOW()
+         WHERE id = ?`,
+		source, string(refJSON), placeID,
+	)
+	if tx.Error != nil {
+		return fmt.Errorf("attach external ref: %w", tx.Error)
+	}
+	if tx.RowsAffected == 0 {
+		return fmt.Errorf("attach external ref: place %q not found", placeID)
+	}
+	return nil
+}
+
 // Compile-time assertion that *Repository satisfies identity.CandidateRepo.
 // The assertion lives here so a signature drift in either side fails the build
 // at the boundary, not at the first caller.
@@ -99,3 +134,6 @@ var _ interface {
 		categories []models.Category,
 	) ([]models.Place, error)
 } = (*Repository)(nil)
+
+// Compile-time assertion that *Repository satisfies identity.AttachRepo.
+var _ identity.AttachRepo = (*Repository)(nil)
