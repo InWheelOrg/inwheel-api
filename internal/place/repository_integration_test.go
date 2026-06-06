@@ -9,6 +9,7 @@ package place_test
 
 import (
 	"context"
+	"strings"
 	"testing"
 	"time"
 
@@ -481,7 +482,10 @@ func TestAttachExternalRef_PlaceNotFound(t *testing.T) {
 	ref := models.ExternalRef{ID: "wm/999", Confidence: 0.9, MatchedAt: time.Now()}
 	err = repo.AttachExternalRef(ctx, "00000000-0000-0000-0000-000000000000", "wheelmap", ref)
 	if err == nil {
-		t.Error("expected error for non-existent place, got nil")
+		t.Fatal("expected error for non-existent place, got nil")
+	}
+	if !strings.Contains(err.Error(), "not found") {
+		t.Errorf("error = %q, want it to contain %q", err.Error(), "not found")
 	}
 }
 
