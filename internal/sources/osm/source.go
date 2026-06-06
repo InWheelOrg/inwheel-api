@@ -22,6 +22,8 @@ type Source struct {
 
 func (s *Source) Name() string { return "osm" }
 
+func (s *Source) Kind() sources.SourceKind { return sources.SourceKindCanonical }
+
 func (s *Source) FullImport(ctx context.Context, sink sources.Sink) error {
 	f, err := os.Open(s.PBFPath)
 	if err != nil {
