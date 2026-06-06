@@ -90,14 +90,41 @@ func run(ctx context.Context, sourceName, command string, cfg config) error {
 	return runPipeline(ctx, src, command, gormDB)
 }
 
-// runPipeline executes one ingest of src against gormDB. Canonical sources go
-// through the batched upsert path; external sources go through identity.Resolver.
+// runPipeline routes src to its pipeline based on Kind.
 func runPipeline(ctx context.Context, src sources.Source, command string, gormDB *gorm.DB) error {
+	switch src.Kind() {
+	case sources.SourceKindCanonical:
+		return runCanonical(ctx, src, command, gormDB)
+	case sources.SourceKindExternal:
+		return runExternal(ctx, src, command, gormDB)
+	default:
+		return fmt.Errorf("source %q has unknown kind: %v", src.Name(), src.Kind())
+	}
+}
+
+// runCanonical drives a canonical source through the batched upsert path.
+func runCanonical(ctx context.Context, src sources.Source, command string, gormDB *gorm.DB) error {
+	placesRepo := place.NewRepository(gormDB)
+	b := &batcher{size: batchSize, flush: placesRepo.UpsertBatch}
+	if err := dispatchCanonical(ctx, src, command, b.sink); err != nil {
+		return fmt.Errorf("source %q: %w", src.Name(), err)
+	}
+	if err := b.flushNow(ctx); err != nil {
+		return fmt.Errorf("final flush: %w", err)
+	}
+	slog.Info("ingestion complete",
+		"source", src.Name(),
+		"command", command,
+		"written", b.written,
+	)
+	return nil
+}
+
+// runExternal drives an external source through identity.Resolver, attaching
+// matched external refs and queueing the rest.
+func runExternal(ctx context.Context, src sources.Source, command string, gormDB *gorm.DB) error {
 	placesRepo := place.NewRepository(gormDB)
 	unmatchedRepo := unmatched.NewRepository(gormDB)
-
-	b := &batcher{size: batchSize, flush: placesRepo.UpsertBatch}
-
 	resolver := &identity.Resolver{
 		Candidates: placesRepo,
 		Places:     placesRepo,
@@ -105,39 +132,19 @@ func runPipeline(ctx context.Context, src sources.Source, command string, gormDB
 		Now:        time.Now,
 	}
 	counters := &resolveCounters{}
-	recordSink := buildRecordSink(resolver, counters)
-
-	if err := dispatch(ctx, src, command, b.sink, recordSink); err != nil {
+	sink := buildRecordSink(resolver, counters)
+	if err := dispatchExternal(ctx, src, command, sink); err != nil {
 		return fmt.Errorf("source %q: %w", src.Name(), err)
 	}
-	if err := b.flushNow(ctx); err != nil {
-		return fmt.Errorf("final flush: %w", err)
-	}
-	args := []any{"source", src.Name(), "command", command}
-	switch src.Kind() {
-	case sources.SourceKindCanonical:
-		args = append(args, "written", b.written)
-	case sources.SourceKindExternal:
-		args = append(args,
-			"confident", counters.confident,
-			"low_confidence", counters.lowConfidence,
-			"no_match", counters.noMatch,
-			"errors", counters.errors,
-		)
-	}
-	slog.Info("ingestion complete", args...)
+	slog.Info("ingestion complete",
+		"source", src.Name(),
+		"command", command,
+		"confident", counters.confident,
+		"low_confidence", counters.lowConfidence,
+		"no_match", counters.noMatch,
+		"errors", counters.errors,
+	)
 	return nil
-}
-
-func dispatch(ctx context.Context, src sources.Source, command string, sink sources.Sink, recordSink sources.RecordSink) error {
-	switch src.Kind() {
-	case sources.SourceKindCanonical:
-		return dispatchCanonical(ctx, src, command, sink)
-	case sources.SourceKindExternal:
-		return dispatchExternal(ctx, src, command, recordSink)
-	default:
-		return fmt.Errorf("source %q has unknown kind: %v", src.Name(), src.Kind())
-	}
 }
 
 func dispatchCanonical(ctx context.Context, src sources.Source, command string, sink sources.Sink) error {
