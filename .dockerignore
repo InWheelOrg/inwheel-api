@@ -1,10 +1,17 @@
 .git
+.github
 .vscode
 .idea
 .env
 .postman
 .claude
+.worktrees
 **/*_test.go
 bin/
 docs/
 postman/
+testdata/
+README.md
+CLAUDE.md
+AGENTS.md
+**/README.md
