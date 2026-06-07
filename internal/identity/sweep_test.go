@@ -213,3 +213,92 @@ func TestSweep_AttachFailureSkipsDelete(t *testing.T) {
 		t.Errorf("Delete called after attach failure: %v", queue.deleteCalls)
 	}
 }
+
+func TestSweep_LowConfidenceAttachesAndDeletes(t *testing.T) {
+	clock := time.Date(2026, 6, 6, 12, 0, 0, 0, time.UTC)
+	queue := &fakeSweepRepo{rows: []models.UnmatchedExternal{
+		{
+			ID:     11,
+			Source: "wheelmap", SourceID: "low",
+			Name: "Pascal", Lat: 46.4628, Lng: 6.8417,
+			Category: "cafe",
+		},
+	}}
+	cands := &candidatesRepo{candidates: []models.Place{
+		{ID: "p2", Name: "Pascal", Lat: 46.462575, Lng: 6.8417, Category: models.CategoryCafe},
+	}}
+	attach := &fakeAttachRepo{}
+	s := &identity.Sweeper{Candidates: cands, Places: attach, Queue: queue, Now: fixedClock(clock)}
+	res, err := s.Sweep(context.Background(), []string{"p2"})
+	if err != nil {
+		t.Fatalf("Sweep: %v", err)
+	}
+	if res.LowConfidence != 1 || res.Confident != 0 || res.NoMatch != 0 || res.Errors != 0 {
+		t.Errorf("result = %+v, want LowConfidence=1", res)
+	}
+	if len(attach.calls) != 1 || attach.calls[0].placeID != "p2" {
+		t.Errorf("attach calls = %+v, want one to p2", attach.calls)
+	}
+	if attach.calls[0].ref.Confidence < 0.55 || attach.calls[0].ref.Confidence >= 0.80 {
+		t.Errorf("attach ref.Confidence = %v, want in [0.55, 0.80)", attach.calls[0].ref.Confidence)
+	}
+	if len(queue.deleteCalls) != 1 || queue.deleteCalls[0] != 11 {
+		t.Errorf("Delete calls = %v, want [11]", queue.deleteCalls)
+	}
+	if len(queue.bumpCalls) != 0 {
+		t.Errorf("BumpAttempts unexpectedly called: %v", queue.bumpCalls)
+	}
+}
+
+func TestSweep_DeleteFailureCountsAsError(t *testing.T) {
+	queue := &fakeSweepRepo{
+		rows: []models.UnmatchedExternal{
+			{ID: 1, Source: "wheelmap", SourceID: "a",
+				Name: "Pascal", Lat: 46.4628, Lng: 6.8417, Category: "cafe",
+				Street: "Rue du Simplon", HouseNumber: "10"},
+		},
+		deleteErr: errors.New("delete failed"),
+	}
+	cands := &candidatesRepo{candidates: []models.Place{
+		{ID: "p1", Name: "Pascal", Lat: 46.4628, Lng: 6.8417, Category: models.CategoryCafe,
+			Tags: models.PlaceTags{"addr:street": "Rue du Simplon", "addr:housenumber": "10"}},
+	}}
+	attach := &fakeAttachRepo{}
+	s := &identity.Sweeper{Candidates: cands, Places: attach, Queue: queue, Now: time.Now}
+	res, err := s.Sweep(context.Background(), []string{"p1"})
+	if err != nil {
+		t.Fatalf("Sweep returned fatal err = %v", err)
+	}
+	if res.Errors != 1 || res.Confident != 0 {
+		t.Errorf("result = %+v, want Errors=1 Confident=0", res)
+	}
+	if len(attach.calls) != 1 {
+		t.Errorf("Attach calls = %d, want 1 (attach must run before delete)", len(attach.calls))
+	}
+}
+
+func TestSweep_BumpFailureCountsAsError(t *testing.T) {
+	queue := &fakeSweepRepo{
+		rows: []models.UnmatchedExternal{
+			{ID: 9, Source: "wheelmap", SourceID: "ghost",
+				Name: "Nowhere", Lat: 46.4628, Lng: 6.8417, Category: "cafe"},
+		},
+		bumpErr: errors.New("bump failed"),
+	}
+	cands := &candidatesRepo{candidates: nil}
+	attach := &fakeAttachRepo{}
+	s := &identity.Sweeper{Candidates: cands, Places: attach, Queue: queue, Now: time.Now}
+	res, err := s.Sweep(context.Background(), []string{"p1"})
+	if err != nil {
+		t.Fatalf("Sweep returned fatal err = %v", err)
+	}
+	if res.Errors != 1 || res.NoMatch != 0 {
+		t.Errorf("result = %+v, want Errors=1 NoMatch=0", res)
+	}
+	if len(queue.bumpCalls) != 1 {
+		t.Errorf("Bump calls = %d, want 1", len(queue.bumpCalls))
+	}
+	if len(attach.calls) != 0 {
+		t.Errorf("Attach unexpectedly called on no-match: %v", attach.calls)
+	}
+}
