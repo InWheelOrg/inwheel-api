@@ -130,16 +130,22 @@ func runCanonical(ctx context.Context, src sources.Source, command string, gormD
 		)
 	}
 
-	slog.Info("ingestion complete",
+	args := []any{
 		"source", src.Name(),
 		"command", command,
 		"written", b.written,
-		"sweep_considered", sweepResult.Considered,
-		"sweep_confident", sweepResult.Confident,
-		"sweep_low_confidence", sweepResult.LowConfidence,
-		"sweep_no_match", sweepResult.NoMatch,
-		"sweep_errors", sweepResult.Errors,
-	)
+		"sweep_failed", sweepErr != nil,
+	}
+	if sweepErr == nil {
+		args = append(args,
+			"sweep_considered", sweepResult.Considered,
+			"sweep_confident", sweepResult.Confident,
+			"sweep_low_confidence", sweepResult.LowConfidence,
+			"sweep_no_match", sweepResult.NoMatch,
+			"sweep_errors", sweepResult.Errors,
+		)
+	}
+	slog.Info("ingestion complete", args...)
 	return nil
 }
 
