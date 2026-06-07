@@ -8,6 +8,7 @@ package main
 import (
 	"context"
 	"errors"
+	"fmt"
 	"testing"
 
 	"github.com/InWheelOrg/inwheel-api/pkg/models"
@@ -104,5 +105,44 @@ func TestBatcher_PropagatesFlushError(t *testing.T) {
 	err := b.sink(context.Background(), models.Place{})
 	if !errors.Is(err, sentinel) {
 		t.Fatalf("expected sentinel, got %v", err)
+	}
+}
+
+func TestBatcher_TouchedIDsAccumulateAcrossFlushes(t *testing.T) {
+	flushed := [][]models.Place{}
+	b := &batcher{
+		size: 2,
+		flush: func(_ context.Context, ps []models.Place) error {
+			// Simulate UpsertBatch back-populating IDs.
+			for i := range ps {
+				ps[i].ID = fmt.Sprintf("id-%d-%d", len(flushed), i)
+			}
+			cp := make([]models.Place, len(ps))
+			copy(cp, ps)
+			flushed = append(flushed, cp)
+			return nil
+		},
+	}
+	ctx := context.Background()
+	for i := 0; i < 5; i++ {
+		if err := b.sink(ctx, models.Place{Name: fmt.Sprintf("p%d", i)}); err != nil {
+			t.Fatalf("sink: %v", err)
+		}
+	}
+	if err := b.flushNow(ctx); err != nil {
+		t.Fatalf("flushNow: %v", err)
+	}
+	if got := len(b.touchedIDs); got != 5 {
+		t.Errorf("touchedIDs length = %d, want 5", got)
+	}
+	wantIDs := map[string]bool{
+		"id-0-0": true, "id-0-1": true,
+		"id-1-0": true, "id-1-1": true,
+		"id-2-0": true,
+	}
+	for _, id := range b.touchedIDs {
+		if !wantIDs[id] {
+			t.Errorf("unexpected id in touchedIDs: %q", id)
+		}
 	}
 }
