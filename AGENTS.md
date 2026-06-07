@@ -1,4 +1,4 @@
-# CLAUDE.md
+# AGENTS.md
 
 Public REST API for InWheel — a global registry of physical-place accessibility data. Pure data layer: stores and returns accessibility facts, never decides whether a place is accessible for a given user.
 
