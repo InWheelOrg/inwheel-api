@@ -102,9 +102,11 @@ func runPipeline(ctx context.Context, src sources.Source, command string, gormDB
 	}
 }
 
-// runCanonical drives a canonical source through the batched upsert path.
+// runCanonical drives a canonical source through the batched upsert path,
+// then runs the retry sweep against the IDs of places the batcher touched.
 func runCanonical(ctx context.Context, src sources.Source, command string, gormDB *gorm.DB) error {
 	placesRepo := place.NewRepository(gormDB)
+	unmatchedRepo := unmatched.NewRepository(gormDB)
 	b := &batcher{size: batchSize, flush: placesRepo.UpsertBatch}
 	if err := dispatchCanonical(ctx, src, command, b.sink); err != nil {
 		return fmt.Errorf("source %q: %w", src.Name(), err)
@@ -112,10 +114,31 @@ func runCanonical(ctx context.Context, src sources.Source, command string, gormD
 	if err := b.flushNow(ctx); err != nil {
 		return fmt.Errorf("final flush: %w", err)
 	}
+
+	sweeper := &identity.Sweeper{
+		Candidates: placesRepo,
+		Places:     placesRepo,
+		Queue:      unmatchedRepo,
+		Now:        time.Now,
+	}
+	sweepResult, sweepErr := sweeper.Sweep(ctx, b.touchedIDs)
+	if sweepErr != nil {
+		slog.Warn("sweep failed",
+			"source", src.Name(),
+			"command", command,
+			"error", sweepErr,
+		)
+	}
+
 	slog.Info("ingestion complete",
 		"source", src.Name(),
 		"command", command,
 		"written", b.written,
+		"sweep_considered", sweepResult.Considered,
+		"sweep_confident", sweepResult.Confident,
+		"sweep_low_confidence", sweepResult.LowConfidence,
+		"sweep_no_match", sweepResult.NoMatch,
+		"sweep_errors", sweepResult.Errors,
 	)
 	return nil
 }
