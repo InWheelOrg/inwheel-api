@@ -434,3 +434,176 @@ func TestEnqueue_DistinctPairsCoexist(t *testing.T) {
 		t.Errorf("beta name = %q, want %q", betaName, "Beta Place")
 	}
 }
+
+func TestFindCandidatesNearTouched_ReturnsDistinctRowsNearTouchedPlaces(t *testing.T) {
+	ctx := context.Background()
+	db, cleanup, err := testhelpers.StartPostgres(ctx)
+	if err != nil {
+		t.Fatalf("start postgres: %v", err)
+	}
+	defer cleanup()
+
+	repo := unmatched.NewRepository(db)
+	clock := time.Date(2026, 6, 6, 12, 0, 0, 0, time.UTC)
+
+	near1 := models.UnmatchedExternal{
+		Source: "wheelmap", SourceID: "near1",
+		Name: "Café Near 1", Category: "cafe",
+		Lat: 46.4628, Lng: 6.8417, Attempts: 1, LastAttempted: clock,
+		Payload: json.RawMessage(`{}`),
+	}
+	near2 := models.UnmatchedExternal{
+		Source: "wheelmap", SourceID: "near2",
+		Name: "Café Near 2", Category: "cafe",
+		Lat: 46.4629, Lng: 6.8418, Attempts: 1, LastAttempted: clock,
+		Payload: json.RawMessage(`{}`),
+	}
+	far := models.UnmatchedExternal{
+		Source: "wheelmap", SourceID: "far",
+		Name: "Café Far", Category: "cafe",
+		Lat: 47.3769, Lng: 8.5417, Attempts: 1, LastAttempted: clock,
+		Payload: json.RawMessage(`{}`),
+	}
+	for _, u := range []models.UnmatchedExternal{near1, near2, far} {
+		if err := repo.Enqueue(ctx, u); err != nil {
+			t.Fatalf("Enqueue: %v", err)
+		}
+	}
+
+	sqlDB, err := db.DB()
+	if err != nil {
+		t.Fatalf("get sql.DB: %v", err)
+	}
+	placeIDs := []string{
+		"00000000-0000-0000-0000-000000000001",
+		"00000000-0000-0000-0000-000000000002",
+	}
+	for i, id := range placeIDs {
+		if _, err := sqlDB.ExecContext(ctx, `
+			INSERT INTO places (id, name, lat, lng, category, rank, source, status, tags, external_ids, created_at, updated_at)
+			VALUES ($1, $2, $3, $4, 'cafe', 0, 'osm', 'active', '{}', '{}', NOW(), NOW())
+		`, id, "Place "+id, 46.4628+float64(i)*0.00001, 6.8417); err != nil {
+			t.Fatalf("insert seed place: %v", err)
+		}
+	}
+
+	got, err := repo.FindCandidatesNearTouched(ctx, placeIDs, 50.0)
+	if err != nil {
+		t.Fatalf("FindCandidatesNearTouched: %v", err)
+	}
+	if len(got) != 2 {
+		t.Fatalf("got %d rows, want 2 (near1 + near2, dedup across touched places)", len(got))
+	}
+	gotIDs := map[string]bool{}
+	for _, r := range got {
+		gotIDs[r.SourceID] = true
+	}
+	if !gotIDs["near1"] || !gotIDs["near2"] || gotIDs["far"] {
+		t.Errorf("got source_ids = %v, want {near1, near2}, no far", gotIDs)
+	}
+}
+
+func TestBumpAttempts_IncrementsAndUpdatesTimestamp(t *testing.T) {
+	ctx := context.Background()
+	db, cleanup, err := testhelpers.StartPostgres(ctx)
+	if err != nil {
+		t.Fatalf("start postgres: %v", err)
+	}
+	defer cleanup()
+
+	repo := unmatched.NewRepository(db)
+	clock := time.Date(2026, 6, 6, 12, 0, 0, 0, time.UTC)
+
+	u := models.UnmatchedExternal{
+		Source: "wheelmap", SourceID: "bump",
+		Name: "X", Category: "cafe",
+		Lat: 46.4628, Lng: 6.8417, Attempts: 1, LastAttempted: clock,
+		Payload: json.RawMessage(`{}`),
+	}
+	if err := repo.Enqueue(ctx, u); err != nil {
+		t.Fatalf("Enqueue: %v", err)
+	}
+
+	sqlDB, err := db.DB()
+	if err != nil {
+		t.Fatalf("get sql.DB: %v", err)
+	}
+	var id int64
+	if err := sqlDB.QueryRowContext(ctx,
+		"SELECT id FROM unmatched_external WHERE source = $1 AND source_id = $2",
+		"wheelmap", "bump",
+	).Scan(&id); err != nil {
+		t.Fatalf("lookup id: %v", err)
+	}
+
+	t2 := clock.Add(time.Hour)
+	if err := repo.BumpAttempts(ctx, id, t2); err != nil {
+		t.Fatalf("BumpAttempts: %v", err)
+	}
+
+	var gotAttempts int
+	var gotLastAttempted time.Time
+	if err := sqlDB.QueryRowContext(ctx,
+		"SELECT attempts, last_attempted FROM unmatched_external WHERE id = $1", id,
+	).Scan(&gotAttempts, &gotLastAttempted); err != nil {
+		t.Fatalf("scan: %v", err)
+	}
+	if gotAttempts != 2 {
+		t.Errorf("attempts = %d, want 2", gotAttempts)
+	}
+	if gotLastAttempted.UnixMicro() != t2.UnixMicro() {
+		t.Errorf("last_attempted = %v, want %v", gotLastAttempted, t2)
+	}
+}
+
+func TestDelete_RemovesRow(t *testing.T) {
+	ctx := context.Background()
+	db, cleanup, err := testhelpers.StartPostgres(ctx)
+	if err != nil {
+		t.Fatalf("start postgres: %v", err)
+	}
+	defer cleanup()
+
+	repo := unmatched.NewRepository(db)
+	clock := time.Date(2026, 6, 6, 12, 0, 0, 0, time.UTC)
+
+	u := models.UnmatchedExternal{
+		Source: "wheelmap", SourceID: "del",
+		Name: "X", Category: "cafe",
+		Lat: 46.4628, Lng: 6.8417, Attempts: 1, LastAttempted: clock,
+		Payload: json.RawMessage(`{}`),
+	}
+	if err := repo.Enqueue(ctx, u); err != nil {
+		t.Fatalf("Enqueue: %v", err)
+	}
+
+	sqlDB, err := db.DB()
+	if err != nil {
+		t.Fatalf("get sql.DB: %v", err)
+	}
+	var id int64
+	if err := sqlDB.QueryRowContext(ctx,
+		"SELECT id FROM unmatched_external WHERE source = $1 AND source_id = $2",
+		"wheelmap", "del",
+	).Scan(&id); err != nil {
+		t.Fatalf("lookup id: %v", err)
+	}
+
+	if err := repo.Delete(ctx, id); err != nil {
+		t.Fatalf("Delete: %v", err)
+	}
+
+	var count int
+	if err := sqlDB.QueryRowContext(ctx,
+		"SELECT COUNT(*) FROM unmatched_external WHERE id = $1", id,
+	).Scan(&count); err != nil {
+		t.Fatalf("count: %v", err)
+	}
+	if count != 0 {
+		t.Errorf("row not deleted, count = %d", count)
+	}
+
+	if err := repo.Delete(ctx, id); err == nil {
+		t.Error("second Delete returned nil, want not-found error")
+	}
+}
