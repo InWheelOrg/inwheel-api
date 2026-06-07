@@ -90,6 +90,7 @@ func TestExternalIngest_RoutesAllThreeOutcomes(t *testing.T) {
 		{
 			Source: "synthetic", SourceID: "miss-1",
 			Name: "Ghost", Lat: 47.5000, Lng: 7.5000, Category: models.CategoryCafe,
+			Street: "Quai du Léman", HouseNumber: "42",
 			Payload: json.RawMessage(`{"why":"miss"}`),
 		},
 	}
@@ -133,21 +134,37 @@ func TestExternalIngest_RoutesAllThreeOutcomes(t *testing.T) {
 		}
 	})
 
-	t.Run("no-match enqueues in unmatched_external", func(t *testing.T) {
+	t.Run("no-match enqueues in unmatched_external with full matchable signal", func(t *testing.T) {
 		sqlDB, err := db.DB()
 		if err != nil {
 			t.Fatalf("get sql.DB: %v", err)
 		}
-		var count int
+		var (
+			gotName, gotCategory, gotStreet, gotHouse string
+			gotLat, gotLng                            float64
+		)
 		row := sqlDB.QueryRowContext(ctx,
-			"SELECT COUNT(*) FROM unmatched_external WHERE source = $1 AND source_id = $2",
+			`SELECT name, category, street, housenumber, lat, lng
+			 FROM unmatched_external WHERE source = $1 AND source_id = $2`,
 			"synthetic", "miss-1",
 		)
-		if err := row.Scan(&count); err != nil {
-			t.Fatalf("count query: %v", err)
+		if err := row.Scan(&gotName, &gotCategory, &gotStreet, &gotHouse, &gotLat, &gotLng); err != nil {
+			t.Fatalf("scan unmatched row: %v", err)
 		}
-		if count != 1 {
-			t.Errorf("unmatched_external row count = %d, want 1", count)
+		if gotName != "Ghost" {
+			t.Errorf("name = %q, want %q", gotName, "Ghost")
+		}
+		if gotCategory != string(models.CategoryCafe) {
+			t.Errorf("category = %q, want %q", gotCategory, models.CategoryCafe)
+		}
+		if gotStreet != "Quai du Léman" {
+			t.Errorf("street = %q, want %q", gotStreet, "Quai du Léman")
+		}
+		if gotHouse != "42" {
+			t.Errorf("housenumber = %q, want %q", gotHouse, "42")
+		}
+		if gotLat != 47.5000 || gotLng != 7.5000 {
+			t.Errorf("lat/lng = %v/%v, want 47.5/7.5", gotLat, gotLng)
 		}
 	})
 }

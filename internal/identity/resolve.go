@@ -62,6 +62,10 @@ func (r *Resolver) Resolve(ctx context.Context, rec Record) (Decision, error) {
 		u := models.UnmatchedExternal{
 			Source:        rec.Source,
 			SourceID:      rec.SourceID,
+			Name:          rec.Name,
+			Category:      string(rec.Category),
+			Street:        rec.Street,
+			HouseNumber:   rec.HouseNumber,
 			Lat:           rec.Lat,
 			Lng:           rec.Lng,
 			Payload:       payload,
