@@ -14,10 +14,11 @@ import (
 // batcher buffers places and flushes in fixed-size batches via flush.
 // It is single-goroutine; cmd/ingestion runs ingestion serially.
 type batcher struct {
-	size    int
-	flush   func(context.Context, []models.Place) error
-	buffer  []models.Place
-	written int
+	size       int
+	flush      func(context.Context, []models.Place) error
+	buffer     []models.Place
+	written    int
+	touchedIDs []string
 }
 
 func (b *batcher) sink(ctx context.Context, p models.Place) error {
@@ -36,6 +37,11 @@ func (b *batcher) flushNow(ctx context.Context) error {
 		return err
 	}
 	b.written += len(b.buffer)
+	for _, p := range b.buffer {
+		if p.ID != "" {
+			b.touchedIDs = append(b.touchedIDs, p.ID)
+		}
+	}
 	b.buffer = b.buffer[:0]
 	return nil
 }
