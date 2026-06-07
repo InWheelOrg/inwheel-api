@@ -33,6 +33,10 @@ func TestEnqueue_FirstInsert(t *testing.T) {
 	u := models.UnmatchedExternal{
 		Source:        "wheelmap",
 		SourceID:      "first",
+		Name:          "Test Cafe",
+		Category:      "cafe",
+		Street:        "Rue du Simplon",
+		HouseNumber:   "10",
 		Lat:           46.4628,
 		Lng:           6.8417,
 		Attempts:      1,
@@ -113,6 +117,27 @@ func TestEnqueue_FirstInsert(t *testing.T) {
 	if gotLastAttempted.UnixMicro() != clock.UnixMicro() {
 		t.Errorf("last_attempted = %v, want %v", gotLastAttempted, clock)
 	}
+
+	var gotName, gotCategory, gotStreet, gotHouseNumber string
+	row2 := sqlDB.QueryRowContext(ctx,
+		"SELECT name, category, street, housenumber FROM unmatched_external WHERE source = $1 AND source_id = $2",
+		"wheelmap", "first",
+	)
+	if err := row2.Scan(&gotName, &gotCategory, &gotStreet, &gotHouseNumber); err != nil {
+		t.Fatalf("scan matchable fields: %v", err)
+	}
+	if gotName != "Test Cafe" {
+		t.Errorf("name = %q, want %q", gotName, "Test Cafe")
+	}
+	if gotCategory != "cafe" {
+		t.Errorf("category = %q, want %q", gotCategory, "cafe")
+	}
+	if gotStreet != "Rue du Simplon" {
+		t.Errorf("street = %q, want %q", gotStreet, "Rue du Simplon")
+	}
+	if gotHouseNumber != "10" {
+		t.Errorf("housenumber = %q, want %q", gotHouseNumber, "10")
+	}
 }
 
 func TestEnqueue_ConflictBumpsAttempts(t *testing.T) {
@@ -129,6 +154,10 @@ func TestEnqueue_ConflictBumpsAttempts(t *testing.T) {
 	first := models.UnmatchedExternal{
 		Source:        "wheelmap",
 		SourceID:      "conflict",
+		Name:          "Original Name",
+		Category:      "cafe",
+		Street:        "Old Street",
+		HouseNumber:   "1",
 		Lat:           46.4628,
 		Lng:           6.8417,
 		Attempts:      1,
@@ -143,8 +172,12 @@ func TestEnqueue_ConflictBumpsAttempts(t *testing.T) {
 	second := models.UnmatchedExternal{
 		Source:        "wheelmap",
 		SourceID:      "conflict",
-		Lat:           46.4628,
-		Lng:           6.8417,
+		Name:          "Updated Name",
+		Category:      "restaurant",
+		Street:        "New Street",
+		HouseNumber:   "2",
+		Lat:           46.4630,
+		Lng:           6.8419,
 		Attempts:      1,
 		LastAttempted: t2,
 		Payload:       json.RawMessage(`{"second":2}`),
@@ -199,12 +232,38 @@ func TestEnqueue_ConflictBumpsAttempts(t *testing.T) {
 		t.Errorf("last_attempted = %v, want %v", gotLastAttempted, t2)
 	}
 
+	// Verify matchable fields were overwritten by second enqueue
+	var gotName, gotCategory, gotStreet, gotHouseNumber string
+	if err := sqlDB.QueryRowContext(ctx,
+		"SELECT name, category, street, housenumber FROM unmatched_external WHERE source = $1 AND source_id = $2",
+		"wheelmap", "conflict",
+	).Scan(&gotName, &gotCategory, &gotStreet, &gotHouseNumber); err != nil {
+		t.Fatalf("scan matchable fields: %v", err)
+	}
+	if gotName != "Updated Name" {
+		t.Errorf("name = %q, want %q", gotName, "Updated Name")
+	}
+	if gotCategory != "restaurant" {
+		t.Errorf("category = %q, want %q", gotCategory, "restaurant")
+	}
+	if gotStreet != "New Street" {
+		t.Errorf("street = %q, want %q", gotStreet, "New Street")
+	}
+	if gotHouseNumber != "2" {
+		t.Errorf("housenumber = %q, want %q", gotHouseNumber, "2")
+	}
+
+	// Third enqueue to verify attempts keeps incrementing
 	t3 := t1.Add(2 * time.Hour)
 	third := models.UnmatchedExternal{
 		Source:        "wheelmap",
 		SourceID:      "conflict",
-		Lat:           46.4628,
-		Lng:           6.8417,
+		Name:          "Third Name",
+		Category:      "bar",
+		Street:        "Third Street",
+		HouseNumber:   "3",
+		Lat:           46.4635,
+		Lng:           6.8425,
 		Attempts:      1,
 		LastAttempted: t3,
 		Payload:       json.RawMessage(`{"third":3}`),
@@ -222,6 +281,19 @@ func TestEnqueue_ConflictBumpsAttempts(t *testing.T) {
 	if gotAttempts != 3 {
 		t.Errorf("after third enqueue attempts = %d, want 3 (must increment existing, not use caller's value)", gotAttempts)
 	}
+	// Verify matchable fields overwritten by third
+	if err := sqlDB.QueryRowContext(ctx,
+		"SELECT name, category, street, housenumber FROM unmatched_external WHERE source = $1 AND source_id = $2",
+		"wheelmap", "conflict",
+	).Scan(&gotName, &gotCategory, &gotStreet, &gotHouseNumber); err != nil {
+		t.Fatalf("scan matchable fields third: %v", err)
+	}
+	if gotName != "Third Name" {
+		t.Errorf("name after third = %q, want %q", gotName, "Third Name")
+	}
+	if gotCategory != "bar" {
+		t.Errorf("category after third = %q, want %q", gotCategory, "bar")
+	}
 }
 
 func TestEnqueue_ConflictRefreshesCoordinates(t *testing.T) {
@@ -237,6 +309,7 @@ func TestEnqueue_ConflictRefreshesCoordinates(t *testing.T) {
 
 	first := models.UnmatchedExternal{
 		Source: "wheelmap", SourceID: "moved",
+		Name: "Original Name", Category: "cafe", Street: "Old St", HouseNumber: "1",
 		Lat: 46.4628, Lng: 6.8417, Attempts: 1, LastAttempted: clock,
 		Payload: json.RawMessage(`{}`),
 	}
@@ -246,6 +319,7 @@ func TestEnqueue_ConflictRefreshesCoordinates(t *testing.T) {
 
 	second := models.UnmatchedExternal{
 		Source: "wheelmap", SourceID: "moved",
+		Name: "Updated Name", Category: "restaurant", Street: "Updated St", HouseNumber: "2",
 		Lat: 46.5000, Lng: 6.9000, Attempts: 1, LastAttempted: clock.Add(time.Hour),
 		Payload: json.RawMessage(`{}`),
 	}
@@ -257,7 +331,8 @@ func TestEnqueue_ConflictRefreshesCoordinates(t *testing.T) {
 	if err != nil {
 		t.Fatalf("get sql.DB: %v", err)
 	}
-	var gotLat, gotLng, gotGeomLng, gotGeomLat float64
+	var gotLat, gotLng float64
+	var gotGeomLng, gotGeomLat float64
 	row := sqlDB.QueryRowContext(ctx, `
 		SELECT lat, lng, ST_X(geom::geometry), ST_Y(geom::geometry)
 		FROM unmatched_external
@@ -271,6 +346,26 @@ func TestEnqueue_ConflictRefreshesCoordinates(t *testing.T) {
 	}
 	if math.Abs(gotGeomLng-6.9000) >= 1e-9 || math.Abs(gotGeomLat-46.5000) >= 1e-9 {
 		t.Errorf("geom X/Y = %v/%v, want 6.9000/46.5000", gotGeomLng, gotGeomLat)
+	}
+
+	var gotName, gotCategory, gotStreet, gotHouseNumber string
+	if err := sqlDB.QueryRowContext(ctx,
+		"SELECT name, category, street, housenumber FROM unmatched_external WHERE source = $1 AND source_id = $2",
+		"wheelmap", "moved",
+	).Scan(&gotName, &gotCategory, &gotStreet, &gotHouseNumber); err != nil {
+		t.Fatalf("scan matchable: %v", err)
+	}
+	if gotName != "Updated Name" {
+		t.Errorf("name = %q, want %q", gotName, "Updated Name")
+	}
+	if gotCategory != "restaurant" {
+		t.Errorf("category = %q, want %q", gotCategory, "restaurant")
+	}
+	if gotStreet != "Updated St" {
+		t.Errorf("street = %q, want %q", gotStreet, "Updated St")
+	}
+	if gotHouseNumber != "2" {
+		t.Errorf("housenumber = %q, want %q", gotHouseNumber, "2")
 	}
 }
 
@@ -287,11 +382,13 @@ func TestEnqueue_DistinctPairsCoexist(t *testing.T) {
 
 	alpha := models.UnmatchedExternal{
 		Source: "wheelmap", SourceID: "alpha",
+		Name: "Alpha Place", Category: "cafe", Street: "Alpha St", HouseNumber: "1",
 		Lat: 46.4628, Lng: 6.8417, Attempts: 1, LastAttempted: clock,
 		Payload: json.RawMessage(`{"x":1}`),
 	}
 	beta := models.UnmatchedExternal{
 		Source: "wheelmap", SourceID: "beta",
+		Name: "Beta Place", Category: "shop", Street: "Beta Ave", HouseNumber: "2",
 		Lat: 46.4630, Lng: 6.8420, Attempts: 1, LastAttempted: clock,
 		Payload: json.RawMessage(`{"x":2}`),
 	}
@@ -315,5 +412,25 @@ func TestEnqueue_DistinctPairsCoexist(t *testing.T) {
 	}
 	if count != 2 {
 		t.Errorf("row count = %d, want 2 (unique constraint must be on (source, source_id), not just source)", count)
+	}
+
+	var alphaName, betaName string
+	if err := sqlDB.QueryRowContext(ctx,
+		"SELECT name FROM unmatched_external WHERE source = $1 AND source_id = $2",
+		"wheelmap", "alpha",
+	).Scan(&alphaName); err != nil {
+		t.Fatalf("scan alpha: %v", err)
+	}
+	if err := sqlDB.QueryRowContext(ctx,
+		"SELECT name FROM unmatched_external WHERE source = $1 AND source_id = $2",
+		"wheelmap", "beta",
+	).Scan(&betaName); err != nil {
+		t.Fatalf("scan beta: %v", err)
+	}
+	if alphaName != "Alpha Place" {
+		t.Errorf("alpha name = %q, want %q", alphaName, "Alpha Place")
+	}
+	if betaName != "Beta Place" {
+		t.Errorf("beta name = %q, want %q", betaName, "Beta Place")
 	}
 }

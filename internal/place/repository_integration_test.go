@@ -222,9 +222,9 @@ func TestUnmatchedExternal_TableRoundTrip(t *testing.T) {
 	}
 
 	_, err = sqlDB.ExecContext(ctx, `
-		INSERT INTO unmatched_external (source, source_id, payload, lat, lng, geom)
-		VALUES ($1, $2, $3, $4, $5, ST_SetSRID(ST_MakePoint($5, $4), 4326))
-	`, "wheelmap", "wm/456", `{"name":"Test Cafe","category":"cafe"}`, 60.1699, 24.9384)
+		INSERT INTO unmatched_external (source, source_id, name, category, street, housenumber, payload, lat, lng, geom)
+		VALUES ($1, $2, '', '', '', '', '{"name":"Test Cafe","category":"cafe"}', $3, $4, ST_SetSRID(ST_MakePoint($4, $3), 4326))
+	`, "wheelmap", "wm/456", 60.1699, 24.9384)
 	if err != nil {
 		t.Fatalf("insert into unmatched_external: %v", err)
 	}
@@ -272,8 +272,8 @@ func TestUnmatchedExternal_UniqueConstraint(t *testing.T) {
 	}
 	insert := func() error {
 		_, err := sqlDB.ExecContext(ctx, `
-			INSERT INTO unmatched_external (source, source_id, payload, lat, lng, geom)
-			VALUES ($1, $2, $3, $4, $5, ST_SetSRID(ST_MakePoint($5, $4), 4326))
+			INSERT INTO unmatched_external (source, source_id, name, category, street, housenumber, payload, lat, lng, geom)
+			VALUES ($1, $2, '', '', '', '', $3, $4, $5, ST_SetSRID(ST_MakePoint($5, $4), 4326))
 		`, "wheelmap", "wm/999", `{}`, 60.0, 25.0)
 		return err
 	}
@@ -300,8 +300,8 @@ func TestUnmatchedExternal_ColumnDefaults(t *testing.T) {
 	}
 
 	_, err = sqlDB.ExecContext(ctx, `
-		INSERT INTO unmatched_external (source, source_id, payload, lat, lng, geom)
-		VALUES ($1, $2, $3, $4, $5, ST_SetSRID(ST_MakePoint($5, $4), 4326))
+		INSERT INTO unmatched_external (source, source_id, name, category, street, housenumber, payload, lat, lng, geom)
+		VALUES ($1, $2, '', '', '', '', $3, $4, $5, ST_SetSRID(ST_MakePoint($5, $4), 4326))
 	`, "wheelmap", "wm/defaults", `{}`, 60.0, 25.0)
 	if err != nil {
 		t.Fatalf("insert: %v", err)
@@ -507,8 +507,8 @@ func TestUnmatchedExternal_SpatialQuery(t *testing.T) {
 	// far:  46.4608, 6.8417 (~222 m south — well outside a 50 m radius)
 	insert := func(sourceID string, lat, lng float64) {
 		_, err := sqlDB.ExecContext(ctx, `
-			INSERT INTO unmatched_external (source, source_id, payload, lat, lng, geom)
-			VALUES ($1, $2, $3, $4, $5, ST_SetSRID(ST_MakePoint($5, $4), 4326))
+			INSERT INTO unmatched_external (source, source_id, name, category, street, housenumber, payload, lat, lng, geom)
+			VALUES ($1, $2, '', '', '', '', $3, $4, $5, ST_SetSRID(ST_MakePoint($5, $4), 4326))
 		`, "wheelmap", sourceID, `{}`, lat, lng)
 		if err != nil {
 			t.Fatalf("insert %s: %v", sourceID, err)

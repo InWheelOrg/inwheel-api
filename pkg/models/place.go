@@ -209,6 +209,10 @@ type UnmatchedExternal struct {
 	ID            int64           `gorm:"primaryKey"`
 	Source        string          `gorm:"not null"`
 	SourceID      string          `gorm:"column:source_id;not null"`
+	Name          string          `gorm:"not null;default:''"`
+	Category      string          `gorm:"not null;default:''"`
+	Street        string          `gorm:"not null;default:''"`
+	HouseNumber   string          `gorm:"column:housenumber;not null;default:''"`
 	Lat           float64         `gorm:"not null"`
 	Lng           float64         `gorm:"not null"`
 	Payload       json.RawMessage `gorm:"type:jsonb;not null"`

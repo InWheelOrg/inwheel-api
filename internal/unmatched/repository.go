@@ -27,21 +27,28 @@ func NewRepository(db *gorm.DB) *Repository {
 }
 
 // Enqueue inserts u into unmatched_external. On (source, source_id) conflict,
-// bumps attempts and refreshes payload, last_attempted, and coordinates.
+// bumps attempts and refreshes payload, last_attempted, matchable fields, and coordinates.
 func (r *Repository) Enqueue(ctx context.Context, u models.UnmatchedExternal) error {
 	tx := r.db.WithContext(ctx).Exec(
 		`INSERT INTO unmatched_external
-            (source, source_id, lat, lng, geom, payload, last_attempted, attempts)
+            (source, source_id, name, category, street, housenumber,
+             lat, lng, geom, payload, last_attempted, attempts)
          VALUES
-            (?, ?, ?, ?, ST_Point(?, ?)::geography, ?, ?, ?)
+            (?, ?, ?, ?, ?, ?,
+             ?, ?, ST_Point(?, ?)::geography, ?, ?, ?)
          ON CONFLICT (source, source_id) DO UPDATE SET
             attempts       = unmatched_external.attempts + 1,
             last_attempted = EXCLUDED.last_attempted,
             payload        = EXCLUDED.payload,
+            name           = EXCLUDED.name,
+            category       = EXCLUDED.category,
+            street         = EXCLUDED.street,
+            housenumber    = EXCLUDED.housenumber,
             lat            = EXCLUDED.lat,
             lng            = EXCLUDED.lng,
             geom           = EXCLUDED.geom`,
-		u.Source, u.SourceID, u.Lat, u.Lng, u.Lng, u.Lat,
+		u.Source, u.SourceID, u.Name, u.Category, u.Street, u.HouseNumber,
+		u.Lat, u.Lng, u.Lng, u.Lat,
 		u.Payload, u.LastAttempted, u.Attempts,
 	)
 	if tx.Error != nil {
