@@ -148,6 +148,7 @@ func TestResolve_NoMatchEnqueues(t *testing.T) {
 	rec := identity.Record{
 		Source: "wheelmap", SourceID: "ghost",
 		Name: "Nowhere", Lat: 46.4628, Lng: 6.8417, Category: models.CategoryCafe,
+		Street: "Rue du Simplon", HouseNumber: "10",
 		Payload: payload,
 	}
 	d, err := r.Resolve(context.Background(), rec)
@@ -169,6 +170,18 @@ func TestResolve_NoMatchEnqueues(t *testing.T) {
 	}
 	if got.Lat != 46.4628 || got.Lng != 6.8417 {
 		t.Errorf("enqueued lat/lng = %v/%v, want 46.4628/6.8417", got.Lat, got.Lng)
+	}
+	if got.Name != "Nowhere" {
+		t.Errorf("enqueued Name = %q, want %q", got.Name, "Nowhere")
+	}
+	if got.Category != string(models.CategoryCafe) {
+		t.Errorf("enqueued Category = %q, want %q", got.Category, models.CategoryCafe)
+	}
+	if got.Street != "Rue du Simplon" {
+		t.Errorf("enqueued Street = %q, want %q", got.Street, "Rue du Simplon")
+	}
+	if got.HouseNumber != "10" {
+		t.Errorf("enqueued HouseNumber = %q, want %q", got.HouseNumber, "10")
 	}
 	if string(got.Payload) != string(payload) {
 		t.Errorf("enqueued payload = %s, want %s", got.Payload, payload)
