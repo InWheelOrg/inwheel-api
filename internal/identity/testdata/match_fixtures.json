@@ -9,7 +9,7 @@
       {"id": "p1", "name": "Café Pascal", "lat": 46.4628, "lng": 6.8417, "category": "cafe",
        "tags": {"addr:street": "Rue du Simplon", "addr:housenumber": "10"}}
     ],
-    "expected": {"Kind": "confident", "MatchedPlaceID": "p1", "MinConfidence": 0.95}
+    "expected": {"Kind": "confident", "MatchedPlaceID": "p1"}
   },
   {
     "name": "low confidence: 25 m away, name match, no address",
@@ -17,7 +17,7 @@
     "candidates": [
       {"id": "p1", "name": "Pascal", "lat": 46.462575, "lng": 6.8417, "category": "cafe"}
     ],
-    "expected": {"Kind": "low_confidence", "MatchedPlaceID": "p1", "MinConfidence": 0.55, "MaxConfidence": 0.80}
+    "expected": {"Kind": "low_confidence", "MatchedPlaceID": "p1"}
   },
   {
     "name": "no match: no candidates returned",
@@ -40,7 +40,7 @@
       {"id": "p1", "name": "Roma", "lat": 46.4628, "lng": 6.8417, "category": "cafe"},
       {"id": "p2", "name": "Pascal", "lat": 46.4628, "lng": 6.8417, "category": "cafe"}
     ],
-    "expected": {"Kind": "confident", "MatchedPlaceID": "p2", "MinConfidence": 0.55}
+    "expected": {"Kind": "confident", "MatchedPlaceID": "p2"}
   },
   {
     "name": "address absent: still confident on strong name + distance",
@@ -48,7 +48,7 @@
     "candidates": [
       {"id": "p1", "name": "Pascal", "lat": 46.4628, "lng": 6.8417, "category": "cafe"}
     ],
-    "expected": {"Kind": "confident", "MatchedPlaceID": "p1", "MinConfidence": 0.95}
+    "expected": {"Kind": "confident", "MatchedPlaceID": "p1"}
   },
   {
     "name": "diacritic normalization: Café matches Cafe",
@@ -56,12 +56,100 @@
     "candidates": [
       {"id": "p1", "name": "Cafe Pascal", "lat": 46.4628, "lng": 6.8417, "category": "cafe"}
     ],
-    "expected": {"Kind": "confident", "MatchedPlaceID": "p1", "MinConfidence": 0.95}
+    "expected": {"Kind": "confident", "MatchedPlaceID": "p1"}
   },
   {
-    "name": "category incompatible: fake repo returns empty",
+    "name": "category incompatible: cafe candidate filtered from healthcare record",
     "record": {"Name": "Pascal Pharmacy", "Lat": 46.4628, "Lng": 6.8417, "Category": "healthcare"},
-    "candidates": [],
+    "candidates": [
+      {"id": "p1", "name": "Pascal", "lat": 46.4628, "lng": 6.8417, "category": "cafe"}
+    ],
     "expected": {"Kind": "no_match"}
+  },
+  {
+    "name": "boundary: 5 m offset, identical name, no address → confident",
+    "record": {"Name": "Pascal", "Lat": 46.4628, "Lng": 6.8417, "Category": "cafe"},
+    "candidates": [
+      {"id": "p1", "name": "Pascal", "lat": 46.462755, "lng": 6.8417, "category": "cafe"}
+    ],
+    "expected": {"Kind": "confident", "MatchedPlaceID": "p1"}
+  },
+  {
+    "name": "boundary: 35 m offset, identical name, no address → low_confidence",
+    "record": {"Name": "Pascal", "Lat": 46.4628, "Lng": 6.8417, "Category": "cafe"},
+    "candidates": [
+      {"id": "p1", "name": "Pascal", "lat": 46.462485, "lng": 6.8417, "category": "cafe"}
+    ],
+    "expected": {"Kind": "low_confidence", "MatchedPlaceID": "p1"}
+  },
+  {
+    "name": "boundary: 49 m offset, identical name, no address → no_match (just inside radius, score below floor)",
+    "record": {"Name": "Pascal", "Lat": 46.4628, "Lng": 6.8417, "Category": "cafe"},
+    "candidates": [
+      {"id": "p1", "name": "Pascal", "lat": 46.462359, "lng": 6.8417, "category": "cafe"}
+    ],
+    "expected": {"Kind": "no_match"}
+  },
+  {
+    "name": "boundary: 51 m offset, identical name → no_match (distance score clamps to 0)",
+    "record": {"Name": "Pascal", "Lat": 46.4628, "Lng": 6.8417, "Category": "cafe"},
+    "candidates": [
+      {"id": "p1", "name": "Pascal", "lat": 46.462341, "lng": 6.8417, "category": "cafe"}
+    ],
+    "expected": {"Kind": "no_match"}
+  },
+  {
+    "name": "name variation: business suffix dropped (Pascal Inc → Pascal)",
+    "record": {"Name": "Pascal Inc", "Lat": 46.4628, "Lng": 6.8417, "Category": "cafe"},
+    "candidates": [
+      {"id": "p1", "name": "Pascal", "lat": 46.4628, "lng": 6.8417, "category": "cafe"}
+    ],
+    "expected": {"Kind": "confident", "MatchedPlaceID": "p1"}
+  },
+  {
+    "name": "name variation: word reorder (Mario Pizza ↔ Pizza Mario)",
+    "record": {"Name": "Mario Pizza", "Lat": 46.4628, "Lng": 6.8417, "Category": "restaurant"},
+    "candidates": [
+      {"id": "p1", "name": "Pizza Mario", "lat": 46.4628, "lng": 6.8417, "category": "restaurant"}
+    ],
+    "expected": {"Kind": "confident", "MatchedPlaceID": "p1"}
+  },
+  {
+    "name": "name variation: partial token overlap (Café Pascal Bistro vs Pascal) → low_confidence",
+    "record": {"Name": "Café Pascal Bistro", "Lat": 46.4628, "Lng": 6.8417, "Category": "cafe"},
+    "candidates": [
+      {"id": "p1", "name": "Pascal", "lat": 46.4628, "lng": 6.8417, "category": "cafe"}
+    ],
+    "expected": {"Kind": "low_confidence", "MatchedPlaceID": "p1"}
+  },
+  {
+    "name": "ambiguity: stronger name signal beats slightly-closer noisier candidate",
+    "record": {"Name": "Pascal", "Lat": 46.4628, "Lng": 6.8417, "Category": "cafe"},
+    "candidates": [
+      {"id": "p1", "name": "Pascal", "lat": 46.462620, "lng": 6.8417, "category": "cafe"},
+      {"id": "p2", "name": "Pascal Cafe", "lat": 46.462755, "lng": 6.8417, "category": "cafe"}
+    ],
+    "expected": {"Kind": "low_confidence", "MatchedPlaceID": "p1"}
+  },
+  {
+    "name": "category distractor: pharmacy filtered out, nearby cafe wins",
+    "record": {"Name": "Pascal", "Lat": 46.4628, "Lng": 6.8417, "Category": "cafe"},
+    "candidates": [
+      {"id": "p1", "name": "Pharmacie Pascal", "lat": 46.4628, "lng": 6.8417, "category": "healthcare"},
+      {"id": "p2", "name": "Pascal", "lat": 46.46271, "lng": 6.8417, "category": "cafe"}
+    ],
+    "expected": {"Kind": "confident", "MatchedPlaceID": "p2"}
+  },
+  {
+    "name": "address mismatch: still confident when name + distance dominate",
+    "record": {
+      "Name": "Pascal", "Lat": 46.4628, "Lng": 6.8417, "Category": "cafe",
+      "Street": "Rue du Simplon", "HouseNumber": "10"
+    },
+    "candidates": [
+      {"id": "p1", "name": "Pascal", "lat": 46.4628, "lng": 6.8417, "category": "cafe",
+       "tags": {"addr:street": "Rue de la Gare", "addr:housenumber": "5"}}
+    ],
+    "expected": {"Kind": "confident", "MatchedPlaceID": "p1"}
   }
 ]

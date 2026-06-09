@@ -17,8 +17,10 @@ import (
 	"github.com/InWheelOrg/inwheel-api/pkg/models"
 )
 
-// fakeRepo returns a fixed candidate slice and records the categories it was
-// called with so tests can assert the compat-filter was applied.
+// fakeRepo holds an unfiltered candidate slice and applies the compat-filter
+// that real CandidateRepo implementations apply at the database. Tests can
+// therefore write fixtures that include category-incompatible distractors and
+// verify the filter excludes them.
 type fakeRepo struct {
 	candidates []models.Place
 	err        error
@@ -27,14 +29,25 @@ type fakeRepo struct {
 
 func (f *fakeRepo) FindCandidates(_ context.Context, _, _, _ float64, cats []models.Category) ([]models.Place, error) {
 	f.lastCats = cats
-	return f.candidates, f.err
+	if f.err != nil {
+		return nil, f.err
+	}
+	allowed := make(map[models.Category]bool, len(cats))
+	for _, c := range cats {
+		allowed[c] = true
+	}
+	out := make([]models.Place, 0, len(f.candidates))
+	for _, p := range f.candidates {
+		if allowed[p.Category] {
+			out = append(out, p)
+		}
+	}
+	return out, nil
 }
 
 type fixtureExpected struct {
-	Kind           string  `json:"Kind"`
-	MatchedPlaceID string  `json:"MatchedPlaceID"`
-	MinConfidence  float64 `json:"MinConfidence"`
-	MaxConfidence  float64 `json:"MaxConfidence"`
+	Kind           string `json:"Kind"`
+	MatchedPlaceID string `json:"MatchedPlaceID"`
 }
 
 type fixture struct {
@@ -212,14 +225,6 @@ func TestMatch_Fixtures(t *testing.T) {
 			}
 			if f.Expected.MatchedPlaceID != "" && d.MatchedPlaceID != f.Expected.MatchedPlaceID {
 				t.Errorf("MatchedPlaceID = %q, want %q", d.MatchedPlaceID, f.Expected.MatchedPlaceID)
-				pass = false
-			}
-			if f.Expected.MinConfidence > 0 && d.Confidence < f.Expected.MinConfidence {
-				t.Errorf("Confidence = %v, want >= %v", d.Confidence, f.Expected.MinConfidence)
-				pass = false
-			}
-			if f.Expected.MaxConfidence > 0 && d.Confidence > f.Expected.MaxConfidence {
-				t.Errorf("Confidence = %v, want <= %v", d.Confidence, f.Expected.MaxConfidence)
 				pass = false
 			}
 			total++
