@@ -14,10 +14,10 @@ import (
 func TestTransformNode(t *testing.T) {
 	tags := map[string]string{
 		"amenity": "restaurant",
-		"name":    "Ravintola Tor",
+		"name":    "Le Buffet de la Gare",
 	}
 
-	place, err := TransformNode(123, 60.1699, 24.9384, tags, models.CategoryRestaurant)
+	place, _, err := TransformNode(123, 46.4628, 6.8417, tags, models.CategoryRestaurant)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -28,10 +28,10 @@ func TestTransformNode(t *testing.T) {
 	if place.OSMType != models.OSMNode {
 		t.Errorf("osm_type: got %q want %q", place.OSMType, models.OSMNode)
 	}
-	if place.Name != "Ravintola Tor" {
+	if place.Name != "Le Buffet de la Gare" {
 		t.Errorf("name: got %q", place.Name)
 	}
-	if place.Lat != 60.1699 || place.Lng != 24.9384 {
+	if place.Lat != 46.4628 || place.Lng != 6.8417 {
 		t.Errorf("coords: got (%v, %v)", place.Lat, place.Lng)
 	}
 	if place.Category != models.CategoryRestaurant {
@@ -59,12 +59,13 @@ func TestTransformNode(t *testing.T) {
 
 func TestTransformNode_PreservesTags(t *testing.T) {
 	tags := map[string]string{
-		"amenity":   "restaurant",
-		"name":      "Burger Place",
-		"addr:city": "Helsinki",
+		"amenity":      "restaurant",
+		"name":         "Le Buffet de la Gare",
+		"addr:city":    "Vevey",
+		"addr:country": "CH",
 	}
 
-	place, err := TransformNode(1, 60, 24, tags, models.CategoryRestaurant)
+	place, _, err := TransformNode(1, 46.4628, 6.8417, tags, models.CategoryRestaurant)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -77,9 +78,44 @@ func TestTransformNode_PreservesTags(t *testing.T) {
 }
 
 func TestTransformNode_EmptyCategoryReturnsError(t *testing.T) {
-	_, err := TransformNode(1, 60, 24, map[string]string{"amenity": "restaurant"}, "")
+	_, _, err := TransformNode(1, 46.4628, 6.8417, map[string]string{"amenity": "restaurant"}, "")
 	if err == nil {
 		t.Fatal("expected error for empty category, got nil")
+	}
+}
+
+func TestTransformNode_ReturnsProfileWhenA11yTagsPresent(t *testing.T) {
+	tags := map[string]string{
+		"amenity":    "cafe",
+		"name":       "Café Pascal",
+		"wheelchair": "yes",
+	}
+	place, profile, err := TransformNode(1, 46.4628, 6.8417, tags, models.CategoryCafe)
+	if err != nil {
+		t.Fatalf("TransformNode: %v", err)
+	}
+	if place.Accessibility != nil {
+		t.Errorf("place.Accessibility should be nil — profile is returned separately")
+	}
+	if profile == nil {
+		t.Fatalf("profile = nil, want non-nil when wheelchair=yes present")
+	}
+	if profile.OverallStatus != models.StatusAccessible {
+		t.Errorf("OverallStatus = %q, want accessible", profile.OverallStatus)
+	}
+}
+
+func TestTransformNode_ReturnsNilProfileWhenNoA11yTags(t *testing.T) {
+	tags := map[string]string{
+		"amenity": "cafe",
+		"name":    "Café Pascal",
+	}
+	_, profile, err := TransformNode(1, 46.4628, 6.8417, tags, models.CategoryCafe)
+	if err != nil {
+		t.Fatalf("TransformNode: %v", err)
+	}
+	if profile != nil {
+		t.Errorf("profile = %+v, want nil when no a11y tags", profile)
 	}
 }
 

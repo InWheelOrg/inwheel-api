@@ -11,11 +11,12 @@ import (
 	"github.com/InWheelOrg/inwheel-api/pkg/models"
 )
 
-// TransformNode converts a filtered OSM node into a models.Place ready for upsert.
+// TransformNode converts a filtered OSM node into a models.Place and an optional
+// AccessibilityProfile. Profile is nil when no accessibility tags are present.
 // The category must come from a prior call to Evaluate.
-func TransformNode(osmID int64, lat, lng float64, tags map[string]string, category models.Category) (*models.Place, error) {
+func TransformNode(osmID int64, lat, lng float64, tags map[string]string, category models.Category) (*models.Place, *models.AccessibilityProfile, error) {
 	if category == "" {
-		return nil, fmt.Errorf("transform: category is empty for node %d", osmID)
+		return nil, nil, fmt.Errorf("transform: category is empty for node %d", osmID)
 	}
 
 	placeTags := make(models.PlaceTags, len(tags))
@@ -23,7 +24,7 @@ func TransformNode(osmID int64, lat, lng float64, tags map[string]string, catego
 		placeTags[k] = v
 	}
 
-	return &models.Place{
+	place := &models.Place{
 		OSMID:    osmID,
 		OSMType:  models.OSMNode,
 		Name:     tags["name"],
@@ -40,5 +41,6 @@ func TransformNode(osmID int64, lat, lng float64, tags map[string]string, catego
 		},
 		Source: "osm",
 		Status: models.PlaceStatusActive,
-	}, nil
+	}
+	return place, mapTagsToProfile(tags), nil
 }
