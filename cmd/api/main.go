@@ -313,15 +313,11 @@ func (s *Server) PatchPlaceAccessibility(ctx context.Context, request apiv1.Patc
 	}
 	input.SubmittedAt = &now
 
-	if err := s.db.WithContext(ctx).First(&models.Place{}, "id = ?", id).Error; err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return apiv1.PatchPlaceAccessibility404JSONResponse{Error: "place not found"}, nil
-		}
-		return nil, err
-	}
-
 	created, err := s.places.UpsertProfile(ctx, id, &input)
 	if err != nil {
+		if errors.Is(err, place.ErrPlaceNotFound) {
+			return apiv1.PatchPlaceAccessibility404JSONResponse{Error: "place not found"}, nil
+		}
 		return nil, err
 	}
 

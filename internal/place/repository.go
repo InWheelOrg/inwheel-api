@@ -19,6 +19,8 @@ import (
 	"github.com/InWheelOrg/inwheel-api/pkg/models"
 )
 
+var ErrPlaceNotFound = errors.New("place not found")
+
 type Repository struct {
 	db *gorm.DB
 }
@@ -118,6 +120,12 @@ func (r *Repository) UpsertProfile(ctx context.Context, placeID string, profile 
 	}
 	now := time.Now()
 	err = r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		if err := tx.First(&models.Place{}, "id = ?", placeID).Error; err != nil {
+			if errors.Is(err, gorm.ErrRecordNotFound) {
+				return ErrPlaceNotFound
+			}
+			return fmt.Errorf("upsert profile: check place: %w", err)
+		}
 		var existing models.AccessibilityProfile
 		loadErr := tx.Where("place_id = ?", placeID).First(&existing).Error
 		if loadErr != nil && !errors.Is(loadErr, gorm.ErrRecordNotFound) {

@@ -9,6 +9,7 @@ package place_test
 
 import (
 	"context"
+	"errors"
 	"strings"
 	"testing"
 	"time"
@@ -335,6 +336,21 @@ func TestRepository_UpsertProfile_OverwritesUserVerified(t *testing.T) {
 	}
 	if got.OverallStatus != models.StatusInaccessible {
 		t.Errorf("OverallStatus = %q, want %q", got.OverallStatus, models.StatusInaccessible)
+	}
+}
+
+func TestRepository_UpsertProfile_PlaceNotFound(t *testing.T) {
+	ctx := context.Background()
+	db, cleanup, err := testhelpers.StartPostgres(ctx)
+	if err != nil {
+		t.Fatalf("start postgres: %v", err)
+	}
+	defer cleanup()
+
+	repo := place.NewRepository(db)
+	_, err = repo.UpsertProfile(ctx, "00000000-0000-0000-0000-000000000000", &models.AccessibilityProfile{OverallStatus: models.StatusAccessible})
+	if !errors.Is(err, place.ErrPlaceNotFound) {
+		t.Errorf("err = %v, want ErrPlaceNotFound", err)
 	}
 }
 
