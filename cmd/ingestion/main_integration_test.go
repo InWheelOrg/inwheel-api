@@ -13,6 +13,8 @@ import (
 	"math"
 	"testing"
 
+	"github.com/InWheelOrg/inwheel-api/internal/place"
+	"github.com/InWheelOrg/inwheel-api/internal/sources"
 	"github.com/InWheelOrg/inwheel-api/internal/testhelpers"
 	"github.com/InWheelOrg/inwheel-api/pkg/models"
 )
@@ -172,4 +174,151 @@ func TestFullImport_AndorraFixture(t *testing.T) {
 			t.Errorf("row count changed across re-import: before=%d after=%d", before, after)
 		}
 	})
+}
+
+func TestRunCanonical_WritesAccessibilityProfiles(t *testing.T) {
+	ctx := context.Background()
+	db, cleanup, err := testhelpers.StartPostgres(ctx)
+	if err != nil {
+		t.Fatalf("start postgres: %v", err)
+	}
+	defer cleanup()
+
+	hasStep := true
+	hasRamp := false
+	src := &fakeCanonicalSource{
+		emit: []fakeEmit{
+			{
+				place: models.Place{
+					OSMID: 1001, OSMType: models.OSMNode, Name: "Plain",
+					Lat: 46.4620, Lng: 6.8400, Category: models.CategoryCafe,
+					Status: models.PlaceStatusActive,
+					ExternalIDs: models.ExternalIDs{"osm": {ID: "node/1001", Confidence: 1.0}},
+				},
+			},
+			{
+				place: models.Place{
+					OSMID: 1002, OSMType: models.OSMNode, Name: "Accessible",
+					Lat: 46.4621, Lng: 6.8401, Category: models.CategoryCafe,
+					Status: models.PlaceStatusActive,
+					ExternalIDs: models.ExternalIDs{"osm": {ID: "node/1002", Confidence: 1.0}},
+				},
+				profile: &models.AccessibilityProfile{OverallStatus: models.StatusAccessible},
+			},
+			{
+				place: models.Place{
+					OSMID: 1003, OSMType: models.OSMNode, Name: "Hard Conflict",
+					Lat: 46.4622, Lng: 6.8402, Category: models.CategoryCafe,
+					Status: models.PlaceStatusActive,
+					ExternalIDs: models.ExternalIDs{"osm": {ID: "node/1003", Confidence: 1.0}},
+				},
+				profile: &models.AccessibilityProfile{
+					OverallStatus: models.StatusAccessible,
+					Components: models.A11yComponents{{
+						Type:          models.ComponentEntrance,
+						OverallStatus: models.StatusAccessible,
+						Entrance:      &models.EntranceProperties{HasStep: &hasStep, HasRamp: &hasRamp},
+					}},
+				},
+			},
+		},
+	}
+
+	if err := runCanonical(ctx, src, "full-import", db); err != nil {
+		t.Fatalf("runCanonical: %v", err)
+	}
+
+	var profiles []models.AccessibilityProfile
+	if err := db.Find(&profiles).Error; err != nil {
+		t.Fatalf("read profiles: %v", err)
+	}
+	if len(profiles) != 2 {
+		t.Fatalf("expected 2 profiles (Plain has none), got %d", len(profiles))
+	}
+
+	var conflictProfile models.AccessibilityProfile
+	if err := db.Joins("JOIN places ON places.id = accessibility_profiles.place_id").
+		Where("places.osm_id = ?", 1003).
+		First(&conflictProfile).Error; err != nil {
+		t.Fatalf("read conflict profile: %v", err)
+	}
+	if len(conflictProfile.Components) != 1 {
+		t.Fatalf("conflict profile components = %d, want 1", len(conflictProfile.Components))
+	}
+	if conflictProfile.Components[0].OverallStatus != models.StatusLimited {
+		t.Errorf("component status = %q, want limited (downgraded from accessible)", conflictProfile.Components[0].OverallStatus)
+	}
+}
+
+func TestRunCanonical_DoesNotOverwriteUserVerified(t *testing.T) {
+	ctx := context.Background()
+	db, cleanup, err := testhelpers.StartPostgres(ctx)
+	if err != nil {
+		t.Fatalf("start postgres: %v", err)
+	}
+	defer cleanup()
+
+	repo := place.NewRepository(db)
+	seed := models.Place{
+		OSMID: 2001, OSMType: models.OSMNode, Name: "Verified",
+		Lat: 46.5000, Lng: 6.9000, Category: models.CategoryCafe,
+		Status: models.PlaceStatusActive,
+		ExternalIDs: models.ExternalIDs{"osm": {ID: "node/2001", Confidence: 1.0}},
+	}
+	if err := db.Create(&seed).Error; err != nil {
+		t.Fatalf("seed place: %v", err)
+	}
+	_, err = repo.UpsertProfile(ctx, seed.ID, &models.AccessibilityProfile{
+		OverallStatus: models.StatusInaccessible,
+		UserVerified:  true,
+	})
+	if err != nil {
+		t.Fatalf("seed profile: %v", err)
+	}
+
+	src := &fakeCanonicalSource{
+		emit: []fakeEmit{{
+			place: models.Place{
+				OSMID: 2001, OSMType: models.OSMNode, Name: "Verified",
+				Lat: 46.5000, Lng: 6.9000, Category: models.CategoryCafe,
+				Status: models.PlaceStatusActive,
+				ExternalIDs: models.ExternalIDs{"osm": {ID: "node/2001", Confidence: 1.0}},
+			},
+			profile: &models.AccessibilityProfile{OverallStatus: models.StatusAccessible},
+		}},
+	}
+	if err := runCanonical(ctx, src, "full-import", db); err != nil {
+		t.Fatalf("runCanonical: %v", err)
+	}
+
+	var stored models.AccessibilityProfile
+	if err := db.Where("place_id = ?", seed.ID).First(&stored).Error; err != nil {
+		t.Fatalf("read: %v", err)
+	}
+	if stored.OverallStatus != models.StatusInaccessible {
+		t.Errorf("user-verified profile got overwritten: status = %q, want inaccessible", stored.OverallStatus)
+	}
+	if !stored.UserVerified {
+		t.Errorf("user_verified flag was cleared")
+	}
+}
+
+type fakeEmit struct {
+	place   models.Place
+	profile *models.AccessibilityProfile
+}
+
+type fakeCanonicalSource struct {
+	emit []fakeEmit
+}
+
+func (f *fakeCanonicalSource) Name() string             { return "fake" }
+func (f *fakeCanonicalSource) Kind() sources.SourceKind { return sources.SourceKindCanonical }
+func (f *fakeCanonicalSource) FullImport(ctx context.Context, sink sources.Sink) error {
+	for _, e := range f.emit {
+		if err := sink(ctx, e.place, e.profile); err != nil {
+			return err
+		}
+	}
+	return nil
 }

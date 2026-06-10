@@ -1,6 +1,6 @@
 # internal/place
 
-Data-access layer for the `places` table. The repository is a small, focused type that exposes the read and write operations the rest of the codebase needs against canonical places — no business logic, no validation, no decisions about accessibility. It is the only package that touches `places` directly.
+Data-access layer for the `places` table and the related `accessibility_profiles` table. The repository exposes the read and write operations the rest of the codebase needs against canonical places and their profiles — no business logic, no validation, no decisions about accessibility.
 
 ## What it provides
 
@@ -31,6 +31,8 @@ flowchart LR
 | `UpsertBatch(ctx, places)` | the ingestion batcher | Bulk insert/update on `(osm_id, osm_type)` conflict. Uses `RETURNING id` so GORM back-populates the `ID` field on every place in the slice — the batcher harvests these as `touchedIDs` for the retry sweep. |
 | `AttachExternalRef(ctx, placeID, source, ref)` | `identity.Resolver`, `identity.Sweeper` | Adds an `ExternalRef` to the place's `external_ids` JSONB map under the given source key, via Postgres `jsonb_set`. Concurrent attaches to different sources on the same place don't clobber each other. |
 | `FindCandidates(ctx, lat, lng, radiusM, categories)` | `identity.Match` | Active places within `radiusM` of the point whose category is in `categories`. Uses `ST_DWithin` over a `geography(ST_Point(lng, lat))` expression. Backed by a PostGIS GIST index. |
+| `UpsertProfile(ctx, placeID, profile)` | `cmd/api` (`PatchPlaceAccessibility`) | Create-or-update the accessibility profile for a place. Always overwrites — user-driven write path. Returns `created=true` when a new row was inserted. |
+| `UpsertProfileIngestion(ctx, placeID, profile)` | ingestion batcher | Same as `UpsertProfile` but skips the write when `user_verified=true`, preserving human corrections across automated re-ingests. |
 
 ## Compile-time contracts
 

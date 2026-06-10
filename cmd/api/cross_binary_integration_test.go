@@ -43,7 +43,7 @@ func runOSMIngestForCrossBinary(t *testing.T, pbfPath string) {
 		}
 		buf = buf[:0]
 	}
-	sink := func(_ context.Context, p models.Place) error {
+	sink := func(_ context.Context, p models.Place, _ *models.AccessibilityProfile) error {
 		buf = append(buf, p)
 		if len(buf) >= batchSize {
 			flush()

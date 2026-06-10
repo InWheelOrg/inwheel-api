@@ -14,11 +14,13 @@ import (
 
 	"gorm.io/gorm"
 
+	"github.com/InWheelOrg/inwheel-api/internal/a11y"
 	"github.com/InWheelOrg/inwheel-api/internal/db"
 	"github.com/InWheelOrg/inwheel-api/internal/identity"
 	"github.com/InWheelOrg/inwheel-api/internal/place"
 	"github.com/InWheelOrg/inwheel-api/internal/sources"
 	"github.com/InWheelOrg/inwheel-api/internal/unmatched"
+	"github.com/InWheelOrg/inwheel-api/pkg/models"
 )
 
 const batchSize = 1000
@@ -107,7 +109,18 @@ func runPipeline(ctx context.Context, src sources.Source, command string, gormDB
 func runCanonical(ctx context.Context, src sources.Source, command string, gormDB *gorm.DB) error {
 	placesRepo := place.NewRepository(gormDB)
 	unmatchedRepo := unmatched.NewRepository(gormDB)
-	b := &batcher{size: batchSize, flush: placesRepo.UpsertBatch}
+	engine := &a11y.Engine{}
+
+	b := &batcher{
+		size:  batchSize,
+		flush: placesRepo.UpsertBatch,
+		writeProfile: func(ctx context.Context, placeID string, p *models.AccessibilityProfile) (bool, error) {
+			return placesRepo.UpsertProfileIngestion(ctx, placeID, p)
+		},
+		downgradeProfile: func(p *models.AccessibilityProfile) int {
+			return resolveIngestionConflicts(engine, p)
+		},
+	}
 	if err := dispatchCanonical(ctx, src, command, b.sink); err != nil {
 		return fmt.Errorf("source %q: %w", src.Name(), err)
 	}
@@ -134,6 +147,8 @@ func runCanonical(ctx context.Context, src sources.Source, command string, gormD
 		"source", src.Name(),
 		"command", command,
 		"written", b.written,
+		"profiles_written", b.profilesWritten,
+		"profiles_downgraded", b.profilesDowngraded,
 		"sweep_failed", sweepErr != nil,
 	}
 	if sweepErr == nil {
@@ -212,6 +227,33 @@ func dispatchExternal(ctx context.Context, src sources.Source, command string, s
 	default:
 		return fmt.Errorf("unknown command: %q", command)
 	}
+}
+
+// resolveIngestionConflicts applies audit flags and demotes conflicting components
+// from accessible to limited.
+func resolveIngestionConflicts(engine *a11y.Engine, profile *models.AccessibilityProfile) int {
+	if profile == nil {
+		return 0
+	}
+	engine.WithAuditFlags(profile)
+	conflicts := engine.DetectConflicts(profile)
+	if len(conflicts) == 0 {
+		return 0
+	}
+	conflicted := make(map[models.A11yComponentType]bool, len(conflicts))
+	for _, c := range conflicts {
+		conflicted[c.Component] = true
+	}
+	downgraded := 0
+	for i := range profile.Components {
+		c := &profile.Components[i]
+		if conflicted[c.Type] && c.OverallStatus == models.StatusAccessible {
+			c.OverallStatus = models.StatusLimited
+			downgraded++
+			slog.Info("ingestion downgraded component", "component", c.Type, "flags", c.AuditFlags)
+		}
+	}
+	return downgraded
 }
 
 // resolveCounters tallies external-source outcomes for the run summary.

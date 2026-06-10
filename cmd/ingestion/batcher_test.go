@@ -28,7 +28,7 @@ func TestBatcher_FlushesWhenFull(t *testing.T) {
 
 	ctx := context.Background()
 	for i := 0; i < 3; i++ {
-		if err := b.sink(ctx, models.Place{}); err != nil {
+		if err := b.sink(ctx, models.Place{}, nil); err != nil {
 			t.Fatalf("sink %d: %v", i, err)
 		}
 	}
@@ -58,7 +58,7 @@ func TestBatcher_FlushNow_DrainsPartialBuffer(t *testing.T) {
 
 	ctx := context.Background()
 	for i := 0; i < 3; i++ {
-		if err := b.sink(ctx, models.Place{}); err != nil {
+		if err := b.sink(ctx, models.Place{}, nil); err != nil {
 			t.Fatalf("sink: %v", err)
 		}
 	}
@@ -102,7 +102,7 @@ func TestBatcher_PropagatesFlushError(t *testing.T) {
 			return sentinel
 		},
 	}
-	err := b.sink(context.Background(), models.Place{})
+	err := b.sink(context.Background(), models.Place{}, nil)
 	if !errors.Is(err, sentinel) {
 		t.Fatalf("expected sentinel, got %v", err)
 	}
@@ -113,7 +113,6 @@ func TestBatcher_TouchedIDsAccumulateAcrossFlushes(t *testing.T) {
 	b := &batcher{
 		size: 2,
 		flush: func(_ context.Context, ps []models.Place) error {
-			// Simulate UpsertBatch back-populating IDs.
 			for i := range ps {
 				ps[i].ID = fmt.Sprintf("id-%d-%d", len(flushed), i)
 			}
@@ -125,7 +124,7 @@ func TestBatcher_TouchedIDsAccumulateAcrossFlushes(t *testing.T) {
 	}
 	ctx := context.Background()
 	for i := 0; i < 5; i++ {
-		if err := b.sink(ctx, models.Place{Name: fmt.Sprintf("p%d", i)}); err != nil {
+		if err := b.sink(ctx, models.Place{Name: fmt.Sprintf("p%d", i)}, nil); err != nil {
 			t.Fatalf("sink: %v", err)
 		}
 	}
@@ -145,4 +144,132 @@ func TestBatcher_TouchedIDsAccumulateAcrossFlushes(t *testing.T) {
 			t.Errorf("unexpected id in touchedIDs: %q", id)
 		}
 	}
+}
+
+func TestBatcher_WritesProfileWhenAttached(t *testing.T) {
+	ctx := context.Background()
+	var captured []capturedProfile
+	b := &batcher{
+		size: 10,
+		flush: func(_ context.Context, ps []models.Place) error {
+			for i := range ps {
+				ps[i].ID = fmt.Sprintf("place-%d", i)
+			}
+			return nil
+		},
+		writeProfile: func(_ context.Context, placeID string, p *models.AccessibilityProfile) (bool, error) {
+			captured = append(captured, capturedProfile{placeID: placeID, profile: p})
+			return true, nil
+		},
+		downgradeProfile: func(_ *models.AccessibilityProfile) int { return 0 },
+	}
+
+	if err := b.sink(ctx, models.Place{Name: "no-a11y"}, nil); err != nil {
+		t.Fatalf("sink p1: %v", err)
+	}
+	profile := &models.AccessibilityProfile{OverallStatus: models.StatusAccessible}
+	if err := b.sink(ctx, models.Place{Name: "with-a11y"}, profile); err != nil {
+		t.Fatalf("sink p2: %v", err)
+	}
+	if err := b.flushNow(ctx); err != nil {
+		t.Fatalf("flushNow: %v", err)
+	}
+	if len(captured) != 1 {
+		t.Fatalf("captured = %d, want 1 profile write", len(captured))
+	}
+	if captured[0].placeID != "place-1" {
+		t.Errorf("placeID = %q, want place-1", captured[0].placeID)
+	}
+	if b.profilesWritten != 1 {
+		t.Errorf("profilesWritten = %d, want 1", b.profilesWritten)
+	}
+}
+
+func TestBatcher_DowngradeCounter(t *testing.T) {
+	ctx := context.Background()
+	b := &batcher{
+		size: 10,
+		flush: func(_ context.Context, ps []models.Place) error {
+			for i := range ps {
+				ps[i].ID = fmt.Sprintf("place-%d", i)
+			}
+			return nil
+		},
+		writeProfile: func(_ context.Context, _ string, _ *models.AccessibilityProfile) (bool, error) {
+			return true, nil
+		},
+		downgradeProfile: func(_ *models.AccessibilityProfile) int { return 2 },
+	}
+	profile := &models.AccessibilityProfile{OverallStatus: models.StatusAccessible}
+	if err := b.sink(ctx, models.Place{Name: "p"}, profile); err != nil {
+		t.Fatalf("sink: %v", err)
+	}
+	if err := b.flushNow(ctx); err != nil {
+		t.Fatalf("flushNow: %v", err)
+	}
+	if b.profilesDowngraded != 2 {
+		t.Errorf("profilesDowngraded = %d, want 2", b.profilesDowngraded)
+	}
+}
+
+func TestBatcher_PlaceHasNoAccessibilityFieldInFlush(t *testing.T) {
+	ctx := context.Background()
+	var batchSeen []models.Place
+	b := &batcher{
+		size: 10,
+		flush: func(_ context.Context, ps []models.Place) error {
+			batchSeen = make([]models.Place, len(ps))
+			copy(batchSeen, ps)
+			for i := range ps {
+				ps[i].ID = fmt.Sprintf("place-%d", i)
+			}
+			return nil
+		},
+		writeProfile: func(_ context.Context, _ string, _ *models.AccessibilityProfile) (bool, error) {
+			return true, nil
+		},
+		downgradeProfile: func(_ *models.AccessibilityProfile) int { return 0 },
+	}
+	profile := &models.AccessibilityProfile{OverallStatus: models.StatusAccessible}
+	if err := b.sink(ctx, models.Place{Name: "with-a11y"}, profile); err != nil {
+		t.Fatalf("sink: %v", err)
+	}
+	if err := b.flushNow(ctx); err != nil {
+		t.Fatalf("flushNow: %v", err)
+	}
+	if len(batchSeen) != 1 {
+		t.Fatalf("expected 1 place in batch, got %d", len(batchSeen))
+	}
+	if batchSeen[0].Accessibility != nil {
+		t.Errorf("place.Accessibility must be nil in flush batch, got %+v", batchSeen[0].Accessibility)
+	}
+}
+
+func TestBatcher_FlushNow_ErrorWhenWriteProfileWithoutDowngrade(t *testing.T) {
+	ctx := context.Background()
+	b := &batcher{
+		size: 10,
+		flush: func(_ context.Context, ps []models.Place) error {
+			for i := range ps {
+				ps[i].ID = fmt.Sprintf("place-%d", i)
+			}
+			return nil
+		},
+		writeProfile: func(_ context.Context, _ string, _ *models.AccessibilityProfile) (bool, error) {
+			return true, nil
+		},
+	}
+	profile := &models.AccessibilityProfile{OverallStatus: models.StatusAccessible}
+	if err := b.sink(ctx, models.Place{Name: "p"}, profile); err != nil {
+		t.Fatalf("sink: %v", err)
+	}
+	err := b.flushNow(ctx)
+	if err == nil {
+		t.Fatal("expected error, got nil")
+	}
+}
+
+type capturedProfile struct {
+	placeID string
+	profile *models.AccessibilityProfile
 }
