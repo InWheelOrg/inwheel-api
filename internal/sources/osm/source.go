@@ -48,7 +48,7 @@ func (s *Source) FullImport(ctx context.Context, sink sources.Sink) error {
 			return nil
 		}
 
-		p, _, err := TransformNode(node.ID, node.Lat, node.Lng, node.Tags, category)
+		p, profile, err := TransformNode(node.ID, node.Lat, node.Lng, node.Tags, category)
 		if err != nil {
 			skipped++
 			slog.Warn("skipping node",
@@ -60,7 +60,7 @@ func (s *Source) FullImport(ctx context.Context, sink sources.Sink) error {
 		}
 
 		emitted++
-		return sink(ctx, *p)
+		return sink(ctx, *p, profile)
 	})
 	if err != nil {
 		return fmt.Errorf("stream: %w", err)

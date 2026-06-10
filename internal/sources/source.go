@@ -27,8 +27,8 @@ const (
 	SourceKindExternal
 )
 
-// Sink receives one place at a time. Used by canonical sources.
-type Sink func(context.Context, models.Place) error
+// Sink receives one place and its optional accessibility profile. Used by canonical sources.
+type Sink func(context.Context, models.Place, *models.AccessibilityProfile) error
 
 // RecordSink receives one identity.Record at a time. Used by external sources.
 type RecordSink func(context.Context, identity.Record) error

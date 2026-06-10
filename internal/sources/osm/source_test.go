@@ -37,7 +37,7 @@ func TestSource_ImplementsFullImporter(t *testing.T) {
 
 func TestSource_FullImport_OpenError(t *testing.T) {
 	s := &Source{PBFPath: "/no/such/file.pbf"}
-	err := s.FullImport(context.Background(), func(context.Context, models.Place) error { return nil })
+	err := s.FullImport(context.Background(), func(context.Context, models.Place, *models.AccessibilityProfile) error { return nil })
 	if err == nil {
 		t.Fatal("expected error opening missing file, got nil")
 	}
@@ -48,7 +48,7 @@ func TestSource_FullImport_EmitsFromFixture(t *testing.T) {
 	s := &Source{PBFPath: fixturePBF}
 
 	var emitted int
-	sink := func(_ context.Context, _ models.Place) error {
+	sink := func(_ context.Context, _ models.Place, _ *models.AccessibilityProfile) error {
 		emitted++
 		return nil
 	}
@@ -67,7 +67,7 @@ func TestSource_FullImport_PropagatesSinkError(t *testing.T) {
 	s := &Source{PBFPath: fixturePBF}
 
 	sentinel := errors.New("sink stop")
-	sink := func(_ context.Context, _ models.Place) error {
+	sink := func(_ context.Context, _ models.Place, _ *models.AccessibilityProfile) error {
 		return sentinel
 	}
 

@@ -11,18 +11,25 @@ import (
 	"github.com/InWheelOrg/inwheel-api/pkg/models"
 )
 
-// batcher buffers places and flushes in fixed-size batches via flush.
-// It is single-goroutine; cmd/ingestion runs ingestion serially.
+// batcher buffers (place, profile) pairs, writes places first via flush, then
+// writes profiles using the UUIDs returned by flush. Single-goroutine.
 type batcher struct {
-	size       int
-	flush      func(context.Context, []models.Place) error
-	buffer     []models.Place
-	written    int
-	touchedIDs []string
+	size             int
+	flush            func(context.Context, []models.Place) error
+	writeProfile     func(context.Context, string, *models.AccessibilityProfile) (bool, error)
+	downgradeProfile func(*models.AccessibilityProfile) int
+
+	buffer             []models.Place
+	pendingProfiles    []*models.AccessibilityProfile
+	written            int
+	touchedIDs         []string
+	profilesWritten    int
+	profilesDowngraded int
 }
 
-func (b *batcher) sink(ctx context.Context, p models.Place) error {
+func (b *batcher) sink(ctx context.Context, p models.Place, profile *models.AccessibilityProfile) error {
 	b.buffer = append(b.buffer, p)
+	b.pendingProfiles = append(b.pendingProfiles, profile)
 	if len(b.buffer) >= b.size {
 		return b.flushNow(ctx)
 	}
@@ -37,11 +44,27 @@ func (b *batcher) flushNow(ctx context.Context) error {
 		return err
 	}
 	b.written += len(b.buffer)
-	for _, p := range b.buffer {
-		if p.ID != "" {
-			b.touchedIDs = append(b.touchedIDs, p.ID)
+	for i, p := range b.buffer {
+		if p.ID == "" {
+			continue
+		}
+		b.touchedIDs = append(b.touchedIDs, p.ID)
+		profile := b.pendingProfiles[i]
+		if profile == nil || b.writeProfile == nil {
+			continue
+		}
+		if b.downgradeProfile != nil {
+			b.profilesDowngraded += b.downgradeProfile(profile)
+		}
+		ok, err := b.writeProfile(ctx, p.ID, profile)
+		if err != nil {
+			return err
+		}
+		if ok {
+			b.profilesWritten++
 		}
 	}
 	b.buffer = b.buffer[:0]
+	b.pendingProfiles = b.pendingProfiles[:0]
 	return nil
 }
