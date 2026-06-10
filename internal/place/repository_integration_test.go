@@ -13,6 +13,8 @@ import (
 	"testing"
 	"time"
 
+	"gorm.io/gorm"
+
 	"github.com/InWheelOrg/inwheel-api/internal/place"
 	"github.com/InWheelOrg/inwheel-api/internal/testhelpers"
 	"github.com/InWheelOrg/inwheel-api/pkg/models"
@@ -206,6 +208,200 @@ func names(ps []models.Place) []string {
 		out[i] = p.Name
 	}
 	return out
+}
+
+func mustCreatePlace(ctx context.Context, t *testing.T, db *gorm.DB, osmID int64, name string) string {
+	t.Helper()
+	p := models.Place{
+		OSMID:    osmID,
+		OSMType:  models.OSMNode,
+		Name:     name,
+		Lat:      46.4628,
+		Lng:      6.8417,
+		Category: models.CategoryCafe,
+		Rank:     models.RankEstablishment,
+		Source:   "osm",
+		Status:   models.PlaceStatusActive,
+	}
+	if err := db.WithContext(ctx).Create(&p).Error; err != nil {
+		t.Fatalf("mustCreatePlace %q: %v", name, err)
+	}
+	return p.ID
+}
+
+func TestRepository_UpsertProfile_CreatesWhenAbsent(t *testing.T) {
+	ctx := context.Background()
+	gormDB, cleanup, err := testhelpers.StartPostgres(ctx)
+	if err != nil {
+		t.Fatalf("start postgres: %v", err)
+	}
+	defer cleanup()
+
+	repo := place.NewRepository(gormDB)
+	placeID := mustCreatePlace(ctx, t, gormDB, 1001, "Profile Test Place")
+
+	profile := &models.AccessibilityProfile{
+		OverallStatus: models.StatusAccessible,
+	}
+	if err := repo.UpsertProfile(ctx, placeID, profile); err != nil {
+		t.Fatalf("UpsertProfile: %v", err)
+	}
+
+	var got models.AccessibilityProfile
+	if err := gormDB.Where("place_id = ?", placeID).First(&got).Error; err != nil {
+		t.Fatalf("load profile: %v", err)
+	}
+	if got.OverallStatus != models.StatusAccessible {
+		t.Errorf("OverallStatus = %q, want %q", got.OverallStatus, models.StatusAccessible)
+	}
+	if got.PlaceID != placeID {
+		t.Errorf("PlaceID = %q, want %q", got.PlaceID, placeID)
+	}
+}
+
+func TestRepository_UpsertProfile_UpdatesWhenPresent(t *testing.T) {
+	ctx := context.Background()
+	gormDB, cleanup, err := testhelpers.StartPostgres(ctx)
+	if err != nil {
+		t.Fatalf("start postgres: %v", err)
+	}
+	defer cleanup()
+
+	repo := place.NewRepository(gormDB)
+	placeID := mustCreatePlace(ctx, t, gormDB, 1002, "Profile Update Place")
+
+	first := &models.AccessibilityProfile{OverallStatus: models.StatusUnknown}
+	if err := repo.UpsertProfile(ctx, placeID, first); err != nil {
+		t.Fatalf("first UpsertProfile: %v", err)
+	}
+
+	second := &models.AccessibilityProfile{OverallStatus: models.StatusLimited}
+	if err := repo.UpsertProfile(ctx, placeID, second); err != nil {
+		t.Fatalf("second UpsertProfile: %v", err)
+	}
+
+	var got models.AccessibilityProfile
+	if err := gormDB.Where("place_id = ?", placeID).First(&got).Error; err != nil {
+		t.Fatalf("load profile: %v", err)
+	}
+	if got.OverallStatus != models.StatusLimited {
+		t.Errorf("OverallStatus = %q, want %q", got.OverallStatus, models.StatusLimited)
+	}
+	var count int64
+	gormDB.Model(&models.AccessibilityProfile{}).Where("place_id = ?", placeID).Count(&count)
+	if count != 1 {
+		t.Errorf("profile row count = %d, want 1", count)
+	}
+}
+
+func TestRepository_UpsertProfile_OverwritesUserVerified(t *testing.T) {
+	ctx := context.Background()
+	gormDB, cleanup, err := testhelpers.StartPostgres(ctx)
+	if err != nil {
+		t.Fatalf("start postgres: %v", err)
+	}
+	defer cleanup()
+
+	repo := place.NewRepository(gormDB)
+	placeID := mustCreatePlace(ctx, t, gormDB, 1003, "User Verified Overwrite Place")
+
+	if err := repo.UpsertProfile(ctx, placeID, &models.AccessibilityProfile{OverallStatus: models.StatusAccessible, UserVerified: true}); err != nil {
+		t.Fatalf("seed: %v", err)
+	}
+
+	override := &models.AccessibilityProfile{
+		OverallStatus: models.StatusInaccessible,
+		UserVerified:  false,
+	}
+	if err := repo.UpsertProfile(ctx, placeID, override); err != nil {
+		t.Fatalf("override UpsertProfile: %v", err)
+	}
+
+	var got models.AccessibilityProfile
+	if err := gormDB.Where("place_id = ?", placeID).First(&got).Error; err != nil {
+		t.Fatalf("load profile: %v", err)
+	}
+	if got.OverallStatus != models.StatusInaccessible {
+		t.Errorf("OverallStatus = %q, want %q", got.OverallStatus, models.StatusInaccessible)
+	}
+}
+
+func TestRepository_UpsertProfileIngestion_InsertsWhenAbsent(t *testing.T) {
+	ctx := context.Background()
+	db, cleanup, err := testhelpers.StartPostgres(ctx)
+	if err != nil {
+		t.Fatalf("start postgres: %v", err)
+	}
+	defer cleanup()
+	repo := place.NewRepository(db)
+	placeID := mustCreatePlace(ctx, t, db, 9004, "Café Pascal Ingestion")
+
+	written, err := repo.UpsertProfileIngestion(ctx, placeID, &models.AccessibilityProfile{OverallStatus: models.StatusAccessible})
+	if err != nil {
+		t.Fatalf("UpsertProfileIngestion: %v", err)
+	}
+	if !written {
+		t.Errorf("written = false, want true on first insert")
+	}
+	var stored models.AccessibilityProfile
+	db.Where("place_id = ?", placeID).First(&stored)
+	if stored.OverallStatus != models.StatusAccessible {
+		t.Errorf("OverallStatus = %q, want accessible", stored.OverallStatus)
+	}
+}
+
+func TestRepository_UpsertProfileIngestion_OverwritesNonVerified(t *testing.T) {
+	ctx := context.Background()
+	db, cleanup, err := testhelpers.StartPostgres(ctx)
+	if err != nil {
+		t.Fatalf("start postgres: %v", err)
+	}
+	defer cleanup()
+	repo := place.NewRepository(db)
+	placeID := mustCreatePlace(ctx, t, db, 9005, "Café Pascal Ingestion2")
+
+	if _, err := repo.UpsertProfileIngestion(ctx, placeID, &models.AccessibilityProfile{OverallStatus: models.StatusLimited}); err != nil {
+		t.Fatalf("seed: %v", err)
+	}
+	written, err := repo.UpsertProfileIngestion(ctx, placeID, &models.AccessibilityProfile{OverallStatus: models.StatusAccessible})
+	if err != nil {
+		t.Fatalf("second: %v", err)
+	}
+	if !written {
+		t.Errorf("written = false, want true (existing row is not user-verified)")
+	}
+	var stored models.AccessibilityProfile
+	db.Where("place_id = ?", placeID).First(&stored)
+	if stored.OverallStatus != models.StatusAccessible {
+		t.Errorf("OverallStatus = %q, want accessible", stored.OverallStatus)
+	}
+}
+
+func TestRepository_UpsertProfileIngestion_SkipsUserVerified(t *testing.T) {
+	ctx := context.Background()
+	db, cleanup, err := testhelpers.StartPostgres(ctx)
+	if err != nil {
+		t.Fatalf("start postgres: %v", err)
+	}
+	defer cleanup()
+	repo := place.NewRepository(db)
+	placeID := mustCreatePlace(ctx, t, db, 9006, "Café Pascal Ingestion3")
+
+	if err := repo.UpsertProfile(ctx, placeID, &models.AccessibilityProfile{OverallStatus: models.StatusAccessible, UserVerified: true}); err != nil {
+		t.Fatalf("seed: %v", err)
+	}
+	written, err := repo.UpsertProfileIngestion(ctx, placeID, &models.AccessibilityProfile{OverallStatus: models.StatusInaccessible})
+	if err != nil {
+		t.Fatalf("machine: %v", err)
+	}
+	if written {
+		t.Errorf("written = true, want false (user-verified row must not be overwritten)")
+	}
+	var stored models.AccessibilityProfile
+	db.Where("place_id = ?", placeID).First(&stored)
+	if stored.OverallStatus != models.StatusAccessible {
+		t.Errorf("user-verified row must survive; got %q", stored.OverallStatus)
+	}
 }
 
 func TestUnmatchedExternal_TableRoundTrip(t *testing.T) {

@@ -3,13 +3,14 @@
  * SPDX-License-Identifier: AGPL-3.0-only
  */
 
-// Package place owns reads and writes against the places table.
 package place
 
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"time"
 
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
@@ -18,30 +19,21 @@ import (
 	"github.com/InWheelOrg/inwheel-api/pkg/models"
 )
 
-// Repository is the data-access layer for places.
 type Repository struct {
 	db *gorm.DB
 }
 
-// NewRepository constructs a Repository backed by the given GORM connection.
 func NewRepository(db *gorm.DB) *Repository {
 	return &Repository{db: db}
 }
 
-// UpsertBatch inserts or updates the given places in a single SQL statement using
-// (osm_id, osm_type) as the conflict key. Existing rows have their name, location,
-// category, rank, tags, external_ids, and status replaced. Returns an error if the
-// underlying SQL fails. An empty or nil batch is a no-op.
 func (r *Repository) UpsertBatch(ctx context.Context, places []models.Place) error {
 	if len(places) == 0 {
 		return nil
 	}
 
-	// TargetWhere matches the partial index predicate. The index is defined
-	// WHERE osm_id <> 0 so test fixtures that create places without setting
-	// osm_id (zero value) don't collide on the unique constraint. In production,
-	// every place is OSM-sourced and has a non-zero osm_id, so the predicate
-	// covers every real row.
+	// TargetWhere matches the partial index (WHERE osm_id <> 0) so zero-OSMID
+	// test fixtures don't collide on the unique constraint.
 	tx := r.db.WithContext(ctx).Clauses(clause.OnConflict{
 		Columns: []clause.Column{
 			{Name: "osm_id"},
@@ -61,9 +53,6 @@ func (r *Repository) UpsertBatch(ctx context.Context, places []models.Place) err
 	return nil
 }
 
-// FindCandidates returns active places within radiusM metres of (lat, lng)
-// whose category is in categories, ordered by ascending distance, capped at 32.
-// Satisfies identity.CandidateRepo.
 func (r *Repository) FindCandidates(
 	ctx context.Context,
 	lat, lng, radiusM float64,
@@ -91,9 +80,6 @@ func (r *Repository) FindCandidates(
 	return out, nil
 }
 
-// AttachExternalRef upserts ref into the place's external_ids map under the
-// given source key, atomically via jsonb_set. Returns an error if no row has
-// the given id.
 func (r *Repository) AttachExternalRef(
 	ctx context.Context,
 	placeID, source string,
@@ -124,16 +110,84 @@ func (r *Repository) AttachExternalRef(
 	return nil
 }
 
-// Compile-time assertion that *Repository satisfies identity.CandidateRepo.
-// The assertion lives here so a signature drift in either side fails the build
-// at the boundary, not at the first caller.
+// UpsertProfile creates or replaces the accessibility profile. Always overwrites — API write path.
+func (r *Repository) UpsertProfile(ctx context.Context, placeID string, profile *models.AccessibilityProfile) error {
+	if profile == nil {
+		return fmt.Errorf("upsert profile: nil profile")
+	}
+	now := time.Now()
+	return r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		var existing models.AccessibilityProfile
+		err := tx.Where("place_id = ?", placeID).First(&existing).Error
+		if err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
+			return fmt.Errorf("upsert profile: load existing: %w", err)
+		}
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			profile.PlaceID = placeID
+			profile.UpdatedAt = now
+			return tx.Create(profile).Error
+		}
+		updates := map[string]any{
+			"overall_status": profile.OverallStatus,
+			"components":     profile.Components,
+			"updated_at":     now,
+			"submitted_by":   profile.SubmittedBy,
+			"submitted_at":   profile.SubmittedAt,
+			"user_verified":  profile.UserVerified,
+		}
+		if err := tx.Model(&existing).Clauses(clause.Returning{}).Updates(updates).Error; err != nil {
+			return err
+		}
+		*profile = existing
+		return nil
+	})
+}
+
+// UpsertProfileIngestion creates or updates the accessibility profile but skips
+// rows where user_verified=true, preserving human-submitted corrections.
+// Returns written=true when a row was actually written.
+func (r *Repository) UpsertProfileIngestion(ctx context.Context, placeID string, profile *models.AccessibilityProfile) (written bool, err error) {
+	if profile == nil {
+		return false, fmt.Errorf("upsert profile ingestion: nil profile")
+	}
+	now := time.Now()
+	err = r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		var existing models.AccessibilityProfile
+		loadErr := tx.Where("place_id = ?", placeID).First(&existing).Error
+		if loadErr != nil && !errors.Is(loadErr, gorm.ErrRecordNotFound) {
+			return fmt.Errorf("upsert profile ingestion: load existing: %w", loadErr)
+		}
+		if errors.Is(loadErr, gorm.ErrRecordNotFound) {
+			profile.PlaceID = placeID
+			profile.UpdatedAt = now
+			profile.UserVerified = false
+			if err := tx.Create(profile).Error; err != nil {
+				return err
+			}
+			written = true
+			return nil
+		}
+		if existing.UserVerified {
+			return nil
+		}
+		updates := map[string]any{
+			"overall_status": profile.OverallStatus,
+			"components":     profile.Components,
+			"updated_at":     now,
+			"submitted_by":   nil,
+			"submitted_at":   nil,
+		}
+		if err := tx.Model(&existing).Updates(updates).Error; err != nil {
+			return err
+		}
+		written = true
+		return nil
+	})
+	return written, err
+}
+
 var _ interface {
-	FindCandidates(
-		ctx context.Context,
-		lat, lng, radiusM float64,
-		categories []models.Category,
-	) ([]models.Place, error)
+	FindCandidates(ctx context.Context, lat, lng, radiusM float64, categories []models.Category) ([]models.Place, error)
 } = (*Repository)(nil)
 
-// Compile-time assertion that *Repository satisfies identity.AttachRepo.
 var _ identity.AttachRepo = (*Repository)(nil)

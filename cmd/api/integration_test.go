@@ -21,6 +21,7 @@ import (
 
 	"github.com/InWheelOrg/inwheel-api/internal/a11y"
 	"github.com/InWheelOrg/inwheel-api/internal/middleware"
+	"github.com/InWheelOrg/inwheel-api/internal/place"
 	"github.com/InWheelOrg/inwheel-api/internal/testhelpers"
 	"github.com/InWheelOrg/inwheel-api/pkg/models"
 	"golang.org/x/time/rate"
@@ -60,6 +61,7 @@ func newTestServer(t *testing.T) *Server {
 	ctx := t.Context()
 	return &Server{
 		db:         testDB,
+		places:     place.NewRepository(testDB),
 		engine:     &a11y.Engine{},
 		regLimiter: middleware.NewRateLimiter(ctx, rate.Every(time.Millisecond), 1000),
 		keyLimiter: middleware.NewRateLimiter(ctx, rate.Every(time.Millisecond), 1000),
