@@ -25,13 +25,13 @@ import (
 	"github.com/InWheelOrg/inwheel-api/internal/geo"
 	"github.com/InWheelOrg/inwheel-api/internal/middleware"
 	"github.com/InWheelOrg/inwheel-api/internal/pagination"
+	"github.com/InWheelOrg/inwheel-api/internal/place"
 	"github.com/InWheelOrg/inwheel-api/internal/validation"
 	"github.com/InWheelOrg/inwheel-api/pkg/models"
 	"github.com/getkin/kin-openapi/openapi3filter"
 	nethttp_middleware "github.com/oapi-codegen/nethttp-middleware"
 	"golang.org/x/time/rate"
 	"gorm.io/gorm"
-	"gorm.io/gorm/clause"
 )
 
 type ctxKeyRequest struct{}
@@ -52,6 +52,7 @@ func injectRequest() apiv1.StrictMiddlewareFunc {
 // Server handles HTTP requests for the InWheel API and implements StrictServerInterface.
 type Server struct {
 	db         *gorm.DB
+	places     *place.Repository
 	engine     *a11y.Engine
 	regLimiter *middleware.RateLimiter
 	keyLimiter *middleware.RateLimiter
@@ -95,6 +96,7 @@ func main() {
 
 	srv := &Server{
 		db:         gormDB,
+		places:     place.NewRepository(gormDB),
 		engine:     &a11y.Engine{},
 		regLimiter: middleware.NewRateLimiter(ctx, rate.Every(20*time.Minute), 3),
 		keyLimiter: middleware.NewRateLimiter(ctx, rate.Every(time.Second), 60),
@@ -182,8 +184,6 @@ func bodySizeLimiter(maxBytes int64) apiv1.MiddlewareFunc {
 		})
 	}
 }
-
-// ── StrictServerInterface ─────────────────────────────────────────────────────
 
 func (s *Server) ListPlaces(ctx context.Context, request apiv1.ListPlacesRequestObject) (apiv1.ListPlacesResponseObject, error) {
 	q := request.Params
@@ -313,57 +313,22 @@ func (s *Server) PatchPlaceAccessibility(ctx context.Context, request apiv1.Patc
 	}
 	input.SubmittedAt = &now
 
-	var result models.AccessibilityProfile
-	var auditAction string
-	err := s.db.Transaction(func(tx *gorm.DB) error {
-		var profile models.AccessibilityProfile
-		err := tx.Where("place_id = ?", id).First(&profile).Error
-
-		if err != nil {
-			if !errors.Is(err, gorm.ErrRecordNotFound) {
-				return err
-			}
-			if err := tx.First(&models.Place{}, "id = ?", id).Error; err != nil {
-				return err
-			}
-			input.PlaceID = id
-			input.UpdatedAt = now
-			if err := tx.Create(&input).Error; err != nil {
-				return err
-			}
-			result = input
-			auditAction = "create"
-			return nil
-		}
-
-		updates := map[string]any{
-			"overall_status": input.OverallStatus,
-			"components":     input.Components,
-			"updated_at":     now,
-			"submitted_by":   input.SubmittedBy,
-			"submitted_at":   input.SubmittedAt,
-		}
-		if err := tx.Model(&profile).Clauses(clause.Returning{}).Updates(updates).Error; err != nil {
-			return err
-		}
-		result = profile
-		auditAction = "update"
-		return nil
-	})
-
+	created, err := s.places.UpsertProfile(ctx, id, &input)
 	if err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
+		if errors.Is(err, place.ErrPlaceNotFound) {
 			return apiv1.PatchPlaceAccessibility404JSONResponse{Error: "place not found"}, nil
 		}
 		return nil, err
 	}
 
-	audit.Log(s.db, "accessibility_profiles", result.ID, keyID, auditAction)
+	auditAction := "update"
+	if created {
+		auditAction = "create"
+	}
+	audit.Log(s.db, "accessibility_profiles", input.ID, keyID, auditAction)
 
-	return apiv1.PatchPlaceAccessibility200JSONResponse(result), nil
+	return apiv1.PatchPlaceAccessibility200JSONResponse(input), nil
 }
-
-// ── Infrastructure handlers ───────────────────────────────────────────────────
 
 func (s *Server) handleHealthz(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, map[string]string{"status": "ok"}, http.StatusOK)
@@ -387,8 +352,6 @@ func (s *Server) handleOpenAPISpec(w http.ResponseWriter, r *http.Request) {
 		slog.Error("handleOpenAPISpec: write failed", "error", err)
 	}
 }
-
-// ── Response type converters ──────────────────────────────────────────────────
 
 func validationError(errs []validation.FieldError) apiv1.ValidationError {
 	fields := make([]apiv1.FieldError, len(errs))
