@@ -243,7 +243,7 @@ func TestRepository_UpsertProfile_CreatesWhenAbsent(t *testing.T) {
 	profile := &models.AccessibilityProfile{
 		OverallStatus: models.StatusAccessible,
 	}
-	if err := repo.UpsertProfile(ctx, placeID, profile); err != nil {
+	if _, err := repo.UpsertProfile(ctx, placeID, profile); err != nil {
 		t.Fatalf("UpsertProfile: %v", err)
 	}
 
@@ -271,12 +271,12 @@ func TestRepository_UpsertProfile_UpdatesWhenPresent(t *testing.T) {
 	placeID := mustCreatePlace(ctx, t, gormDB, 1002, "Profile Update Place")
 
 	first := &models.AccessibilityProfile{OverallStatus: models.StatusUnknown}
-	if err := repo.UpsertProfile(ctx, placeID, first); err != nil {
+	if _, err := repo.UpsertProfile(ctx, placeID, first); err != nil {
 		t.Fatalf("first UpsertProfile: %v", err)
 	}
 
 	second := &models.AccessibilityProfile{OverallStatus: models.StatusLimited}
-	if err := repo.UpsertProfile(ctx, placeID, second); err != nil {
+	if _, err := repo.UpsertProfile(ctx, placeID, second); err != nil {
 		t.Fatalf("second UpsertProfile: %v", err)
 	}
 
@@ -305,7 +305,7 @@ func TestRepository_UpsertProfile_OverwritesUserVerified(t *testing.T) {
 	repo := place.NewRepository(gormDB)
 	placeID := mustCreatePlace(ctx, t, gormDB, 1003, "User Verified Overwrite Place")
 
-	if err := repo.UpsertProfile(ctx, placeID, &models.AccessibilityProfile{OverallStatus: models.StatusAccessible, UserVerified: true}); err != nil {
+	if _, err := repo.UpsertProfile(ctx, placeID, &models.AccessibilityProfile{OverallStatus: models.StatusAccessible, UserVerified: true}); err != nil {
 		t.Fatalf("seed: %v", err)
 	}
 
@@ -313,7 +313,7 @@ func TestRepository_UpsertProfile_OverwritesUserVerified(t *testing.T) {
 		OverallStatus: models.StatusInaccessible,
 		UserVerified:  false,
 	}
-	if err := repo.UpsertProfile(ctx, placeID, override); err != nil {
+	if _, err := repo.UpsertProfile(ctx, placeID, override); err != nil {
 		t.Fatalf("override UpsertProfile: %v", err)
 	}
 
@@ -387,7 +387,7 @@ func TestRepository_UpsertProfileIngestion_SkipsUserVerified(t *testing.T) {
 	repo := place.NewRepository(db)
 	placeID := mustCreatePlace(ctx, t, db, 9006, "Café Pascal Ingestion3")
 
-	if err := repo.UpsertProfile(ctx, placeID, &models.AccessibilityProfile{OverallStatus: models.StatusAccessible, UserVerified: true}); err != nil {
+	if _, err := repo.UpsertProfile(ctx, placeID, &models.AccessibilityProfile{OverallStatus: models.StatusAccessible, UserVerified: true}); err != nil {
 		t.Fatalf("seed: %v", err)
 	}
 	written, err := repo.UpsertProfileIngestion(ctx, placeID, &models.AccessibilityProfile{OverallStatus: models.StatusInaccessible})

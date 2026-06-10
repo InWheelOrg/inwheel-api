@@ -111,20 +111,22 @@ func (r *Repository) AttachExternalRef(
 }
 
 // UpsertProfile creates or replaces the accessibility profile. Always overwrites — API write path.
-func (r *Repository) UpsertProfile(ctx context.Context, placeID string, profile *models.AccessibilityProfile) error {
+// Returns created=true when a new row was inserted, false when an existing row was updated.
+func (r *Repository) UpsertProfile(ctx context.Context, placeID string, profile *models.AccessibilityProfile) (created bool, err error) {
 	if profile == nil {
-		return fmt.Errorf("upsert profile: nil profile")
+		return false, fmt.Errorf("upsert profile: nil profile")
 	}
 	now := time.Now()
-	return r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+	err = r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 		var existing models.AccessibilityProfile
-		err := tx.Where("place_id = ?", placeID).First(&existing).Error
-		if err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
-			return fmt.Errorf("upsert profile: load existing: %w", err)
+		loadErr := tx.Where("place_id = ?", placeID).First(&existing).Error
+		if loadErr != nil && !errors.Is(loadErr, gorm.ErrRecordNotFound) {
+			return fmt.Errorf("upsert profile: load existing: %w", loadErr)
 		}
-		if errors.Is(err, gorm.ErrRecordNotFound) {
+		if errors.Is(loadErr, gorm.ErrRecordNotFound) {
 			profile.PlaceID = placeID
 			profile.UpdatedAt = now
+			created = true
 			return tx.Create(profile).Error
 		}
 		updates := map[string]any{
@@ -141,6 +143,7 @@ func (r *Repository) UpsertProfile(ctx context.Context, placeID string, profile 
 		*profile = existing
 		return nil
 	})
+	return created, err
 }
 
 // UpsertProfileIngestion creates or updates the accessibility profile but skips

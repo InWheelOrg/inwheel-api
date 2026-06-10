@@ -320,13 +320,13 @@ func (s *Server) PatchPlaceAccessibility(ctx context.Context, request apiv1.Patc
 		return nil, err
 	}
 
-	wasCreate := input.ID == ""
-	if err := s.places.UpsertProfile(ctx, id, &input); err != nil {
+	created, err := s.places.UpsertProfile(ctx, id, &input)
+	if err != nil {
 		return nil, err
 	}
 
 	auditAction := "update"
-	if wasCreate {
+	if created {
 		auditAction = "create"
 	}
 	audit.Log(s.db, "accessibility_profiles", input.ID, keyID, auditAction)
