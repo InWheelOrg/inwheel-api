@@ -245,6 +245,30 @@ func TestBatcher_PlaceHasNoAccessibilityFieldInFlush(t *testing.T) {
 	}
 }
 
+func TestBatcher_FlushNow_ErrorWhenWriteProfileWithoutDowngrade(t *testing.T) {
+	ctx := context.Background()
+	b := &batcher{
+		size: 10,
+		flush: func(_ context.Context, ps []models.Place) error {
+			for i := range ps {
+				ps[i].ID = fmt.Sprintf("place-%d", i)
+			}
+			return nil
+		},
+		writeProfile: func(_ context.Context, _ string, _ *models.AccessibilityProfile) (bool, error) {
+			return true, nil
+		},
+	}
+	profile := &models.AccessibilityProfile{OverallStatus: models.StatusAccessible}
+	if err := b.sink(ctx, models.Place{Name: "p"}, profile); err != nil {
+		t.Fatalf("sink: %v", err)
+	}
+	err := b.flushNow(ctx)
+	if err == nil {
+		t.Fatal("expected error, got nil")
+	}
+}
+
 type capturedProfile struct {
 	placeID string
 	profile *models.AccessibilityProfile

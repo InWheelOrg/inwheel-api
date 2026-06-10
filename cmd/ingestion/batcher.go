@@ -7,6 +7,7 @@ package main
 
 import (
 	"context"
+	"fmt"
 
 	"github.com/InWheelOrg/inwheel-api/pkg/models"
 )
@@ -39,6 +40,9 @@ func (b *batcher) sink(ctx context.Context, p models.Place, profile *models.Acce
 func (b *batcher) flushNow(ctx context.Context) error {
 	if len(b.buffer) == 0 {
 		return nil
+	}
+	if b.writeProfile != nil && b.downgradeProfile == nil {
+		return fmt.Errorf("batcher: writeProfile set without downgradeProfile")
 	}
 	if err := b.flush(ctx, b.buffer); err != nil {
 		return err
