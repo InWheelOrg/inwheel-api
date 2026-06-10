@@ -112,6 +112,9 @@ func TestMapTagsToProfile_Parking(t *testing.T) {
 		if p.Parking == nil || p.Parking.HasDisabledSpaces == nil || *p.Parking.HasDisabledSpaces {
 			t.Errorf("HasDisabledSpaces should be false")
 		}
+		if p.Parking.Count == nil || *p.Parking.Count != 0 {
+			t.Errorf("Count = %v, want 0 (preserves confirmed-zero from source tag)", p.Parking.Count)
+		}
 	})
 }
 
@@ -162,6 +165,12 @@ func TestMapTagsToProfile_Entrance(t *testing.T) {
 		e := findComponent(t, got, models.ComponentEntrance)
 		if e.Entrance == nil || e.Entrance.HasRamp == nil || *e.Entrance.HasRamp {
 			t.Errorf("ramp:wheelchair=no should win, got HasRamp=%v", e.Entrance.HasRamp)
+		}
+	})
+	t.Run("ramp=yes alone returns nil (non-wheelchair-specific ramp is not a signal)", func(t *testing.T) {
+		got := mapTagsToProfile(map[string]string{"ramp": "yes"})
+		if got != nil {
+			t.Errorf("ramp=yes alone should return nil, got %+v", got)
 		}
 	})
 }

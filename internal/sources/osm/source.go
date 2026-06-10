@@ -48,7 +48,7 @@ func (s *Source) FullImport(ctx context.Context, sink sources.Sink) error {
 			return nil
 		}
 
-		p, err := TransformNode(node.ID, node.Lat, node.Lng, node.Tags, category)
+		p, _, err := TransformNode(node.ID, node.Lat, node.Lng, node.Tags, category)
 		if err != nil {
 			skipped++
 			slog.Warn("skipping node",

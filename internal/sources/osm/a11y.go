@@ -101,7 +101,7 @@ func mapParking(tags map[string]string) (models.A11yComponent, bool) {
 		return models.A11yComponent{
 			Type:          models.ComponentParking,
 			OverallStatus: models.StatusInaccessible,
-			Parking:       &models.ParkingProperties{HasDisabledSpaces: &no},
+			Parking:       &models.ParkingProperties{HasDisabledSpaces: &no, Count: &n},
 		}, true
 	}
 	if tags["parking:disabled"] == "no" {
