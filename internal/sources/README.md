@@ -8,7 +8,7 @@ Every `Source` declares whether it is canonical or external. The dispatcher uses
 
 | Kind | Meaning | Today |
 |---|---|---|
-| `SourceKindCanonical` | The source owns place rows. Emits `models.Place`. | OSM |
+| `SourceKindCanonical` | The source owns place rows. Emits `models.Place` + optional `*models.AccessibilityProfile`. | OSM |
 | `SourceKindExternal` | The source contributes accessibility data and external IDs that attach to existing canonical places via `identity.Match`. Emits `identity.Record`. | (none yet — Wheelmap is the planned first) |
 
 ## Sinks
@@ -17,7 +17,7 @@ The pipeline gives each source a sink to write into rather than letting the sour
 
 | Sink | Receives | Used by |
 |---|---|---|
-| `Sink` | `models.Place` | canonical sources |
+| `Sink` | `models.Place` + `*models.AccessibilityProfile` | canonical sources |
 | `RecordSink` | `identity.Record` | external sources |
 
 ## Capability interfaces

@@ -11,7 +11,9 @@ flowchart LR
   C -- excluded --> D[Skip]
   C -- category, true --> E[TransformNode]
   E --> F[DeriveRank]
-  F --> G[Sink: models.Place]
+  E --> G[mapTagsToProfile]
+  F --> H[Sink: Place + Profile]
+  G --> H
 ```
 
 `StreamNodes` decodes the PBF and emits one OSM node at a time. Only matched POIs reach the sink.
@@ -34,6 +36,25 @@ Anything else is dropped.
 `TransformNode` builds a `models.Place` from an OSM node and a matched category. Coordinates come from the node; `Tags` is the full OSM tag map preserved as JSONB so `addr:street` and `addr:housenumber` (and anything else) remain available later — the identity matcher reads these tags directly when scoring address overlap.
 
 The natural key for upserts is `(osm_id, osm_type)`, where `osm_type` is `node`, `way`, or `relation`. Today only nodes are streamed.
+
+## Accessibility tag mapping (v1)
+
+`mapTagsToProfile` reads accessibility tags from the POI node and produces a `*models.AccessibilityProfile` or `nil`. POI-node only — no traversal to nearby `entrance=*` nodes or parent ways.
+
+| Tag | Maps to |
+|---|---|
+| `wheelchair=yes\|designated` | profile `OverallStatus=accessible` |
+| `wheelchair=limited` | profile `OverallStatus=limited` |
+| `wheelchair=no` | profile `OverallStatus=inaccessible` |
+| (no `wheelchair=*`, components present) | profile `OverallStatus=unknown` |
+| `toilets:wheelchair=yes\|no` | restroom component |
+| `capacity:disabled=N` | parking component, count preserved |
+| `automatic_door` ≠ `no` | entrance component, `is_automatic=true` |
+| `step_count` or `entrance:step_count` ≥ 1 | entrance component, `has_step=true` |
+| `ramp:wheelchair=yes\|no` | entrance component, `has_ramp` (takes precedence over generic `ramp`) |
+| `elevator=yes` | elevator component, status `accessible` |
+
+When a profile has a hard conflict (e.g. `step_count=1` + `ramp:wheelchair=no` with `overall_status=accessible`), the ingestion pipeline demotes the conflicting component to `limited`. The API write path rejects the same input with HTTP 422.
 
 ## Rank derivation
 
