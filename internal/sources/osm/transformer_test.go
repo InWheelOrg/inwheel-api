@@ -83,6 +83,38 @@ func TestTransformNode_EmptyCategoryReturnsError(t *testing.T) {
 	}
 }
 
+func TestTransformNode_AttachesAccessibilityWhenTagsPresent(t *testing.T) {
+	tags := map[string]string{
+		"amenity":    "cafe",
+		"name":       "Café Pascal",
+		"wheelchair": "yes",
+	}
+	place, err := TransformNode(1, 46.4628, 6.8417, tags, models.CategoryCafe)
+	if err != nil {
+		t.Fatalf("TransformNode: %v", err)
+	}
+	if place.Accessibility == nil {
+		t.Fatalf("Accessibility = nil, want profile when wheelchair=yes present")
+	}
+	if place.Accessibility.OverallStatus != models.StatusAccessible {
+		t.Errorf("OverallStatus = %q, want accessible", place.Accessibility.OverallStatus)
+	}
+}
+
+func TestTransformNode_LeavesAccessibilityNilWhenNoA11yTags(t *testing.T) {
+	tags := map[string]string{
+		"amenity": "cafe",
+		"name":    "Café Pascal",
+	}
+	place, err := TransformNode(1, 46.4628, 6.8417, tags, models.CategoryCafe)
+	if err != nil {
+		t.Fatalf("TransformNode: %v", err)
+	}
+	if place.Accessibility != nil {
+		t.Errorf("Accessibility = %+v, want nil when no a11y tags", place.Accessibility)
+	}
+}
+
 func TestDeriveRank(t *testing.T) {
 	cases := []struct {
 		name     string

@@ -38,7 +38,8 @@ func TransformNode(osmID int64, lat, lng float64, tags map[string]string, catego
 				Confidence: 1.0,
 			},
 		},
-		Source: "osm",
-		Status: models.PlaceStatusActive,
+		Source:        "osm",
+		Status:        models.PlaceStatusActive,
+		Accessibility: mapTagsToProfile(tags),
 	}, nil
 }
