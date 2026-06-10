@@ -188,10 +188,11 @@ func (r *Repository) UpsertProfileIngestion(ctx context.Context, placeID string,
 			"submitted_by":   nil,
 			"submitted_at":   nil,
 		}
-		if err := tx.Model(&existing).Updates(updates).Error; err != nil {
-			return err
+		result := tx.Model(&existing).Updates(updates)
+		if result.Error != nil {
+			return result.Error
 		}
-		written = true
+		written = result.RowsAffected > 0
 		return nil
 	})
 	return written, err
