@@ -243,8 +243,12 @@ func TestRepository_UpsertProfile_CreatesWhenAbsent(t *testing.T) {
 	profile := &models.AccessibilityProfile{
 		OverallStatus: models.StatusAccessible,
 	}
-	if _, err := repo.UpsertProfile(ctx, placeID, profile); err != nil {
+	created, err := repo.UpsertProfile(ctx, placeID, profile)
+	if err != nil {
 		t.Fatalf("UpsertProfile: %v", err)
+	}
+	if !created {
+		t.Errorf("created = false, want true on first insert")
 	}
 
 	var got models.AccessibilityProfile
@@ -271,13 +275,21 @@ func TestRepository_UpsertProfile_UpdatesWhenPresent(t *testing.T) {
 	placeID := mustCreatePlace(ctx, t, gormDB, 1002, "Profile Update Place")
 
 	first := &models.AccessibilityProfile{OverallStatus: models.StatusUnknown}
-	if _, err := repo.UpsertProfile(ctx, placeID, first); err != nil {
+	created, err := repo.UpsertProfile(ctx, placeID, first)
+	if err != nil {
 		t.Fatalf("first UpsertProfile: %v", err)
+	}
+	if !created {
+		t.Errorf("created = false, want true on first insert")
 	}
 
 	second := &models.AccessibilityProfile{OverallStatus: models.StatusLimited}
-	if _, err := repo.UpsertProfile(ctx, placeID, second); err != nil {
+	created, err = repo.UpsertProfile(ctx, placeID, second)
+	if err != nil {
 		t.Fatalf("second UpsertProfile: %v", err)
+	}
+	if created {
+		t.Errorf("created = true, want false on update")
 	}
 
 	var got models.AccessibilityProfile
