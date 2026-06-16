@@ -47,9 +47,9 @@ func TestFindNearbyPlaces(t *testing.T) {
 	t.Cleanup(func() { truncate(t) })
 
 	// Berlin city centre (~52.5200°N, 13.4050°E)
-	berlin := models.Place{Name: "Berlin", Lat: 52.52, Lng: 13.405, Category: "cafe", Source: "test"}
+	berlin := models.Place{Name: "Berlin", Lat: 52.52, Lng: 13.405, Category: "cafe", Rank: models.RankEstablishment, Source: "test"}
 	// London (~51.5074°N, 0.1278°W) — ~930 km away
-	london := models.Place{Name: "London", Lat: 51.507, Lng: -0.127, Category: "cafe", Source: "test"}
+	london := models.Place{Name: "London", Lat: 51.507, Lng: -0.127, Category: "cafe", Rank: models.RankEstablishment, Source: "test"}
 
 	testDB.Create(&berlin)
 	testDB.Create(&london)
@@ -71,8 +71,8 @@ func TestFindNearbyPlaces(t *testing.T) {
 func TestFindPlacesInBoundingBox(t *testing.T) {
 	t.Cleanup(func() { truncate(t) })
 
-	berlin := models.Place{Name: "Berlin", Lat: 52.52, Lng: 13.405, Category: "cafe", Source: "test"}
-	london := models.Place{Name: "London", Lat: 51.507, Lng: -0.127, Category: "cafe", Source: "test"}
+	berlin := models.Place{Name: "Berlin", Lat: 52.52, Lng: 13.405, Category: "cafe", Rank: models.RankEstablishment, Source: "test"}
+	london := models.Place{Name: "London", Lat: 51.507, Lng: -0.127, Category: "cafe", Rank: models.RankEstablishment, Source: "test"}
 
 	testDB.Create(&berlin)
 	testDB.Create(&london)

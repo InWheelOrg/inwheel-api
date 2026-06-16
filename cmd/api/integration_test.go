@@ -76,6 +76,7 @@ func TestHandlePostPlace_WithAccessibility(t *testing.T) {
 		Lat:      52.5,
 		Lng:      13.4,
 		Category: models.CategoryCafe,
+		Rank:     models.RankEstablishment,
 		Source:   "test",
 		Accessibility: &models.AccessibilityProfile{
 			OverallStatus: models.StatusAccessible,
@@ -107,6 +108,7 @@ func TestHandlePostPlace_WithoutAccessibility(t *testing.T) {
 		Lat:      52.5,
 		Lng:      13.4,
 		Category: models.CategoryCafe,
+		Rank:     models.RankEstablishment,
 		Source:   "test",
 	})
 
@@ -139,6 +141,7 @@ func TestHandlePostPlace_HardConflictReturns422(t *testing.T) {
 		Lat:      52.5,
 		Lng:      13.4,
 		Category: models.CategoryCafe,
+		Rank:     models.RankEstablishment,
 		Source:   "test",
 		Accessibility: &models.AccessibilityProfile{
 			OverallStatus: models.StatusAccessible,
@@ -190,6 +193,7 @@ func TestHandlePostPlace_InformationalFlagsAllowed(t *testing.T) {
 		Lat:      52.5,
 		Lng:      13.4,
 		Category: models.CategoryCafe,
+		Rank:     models.RankEstablishment,
 		Source:   "test",
 		Accessibility: &models.AccessibilityProfile{
 			OverallStatus: models.StatusAccessible,
@@ -250,7 +254,7 @@ func TestHandlePatchAccessibility_PlaceNotFound(t *testing.T) {
 func TestHandlePatchAccessibility_CreatePath(t *testing.T) {
 	t.Cleanup(func() { truncate(t) })
 
-	place := models.Place{Name: "Test Place", Lat: 52.5, Lng: 13.4, Category: models.CategoryCafe, Source: "test"}
+	place := models.Place{Name: "Test Place", Lat: 52.5, Lng: 13.4, Category: models.CategoryCafe, Rank: models.RankEstablishment, Source: "test"}
 	testDB.Create(&place)
 
 	body, _ := json.Marshal(models.AccessibilityProfile{
@@ -286,6 +290,7 @@ func TestHandlePatchAccessibility_UpdatesExistingProfile(t *testing.T) {
 		Lat:      52.5,
 		Lng:      13.4,
 		Category: models.CategoryCafe,
+		Rank:     models.RankEstablishment,
 		Source:   "test",
 		Accessibility: &models.AccessibilityProfile{
 			OverallStatus: models.StatusAccessible,
@@ -318,7 +323,7 @@ func TestHandlePatchAccessibility_UpdatesExistingProfile(t *testing.T) {
 func TestHandlePatchAccessibility_ConflictReturns422(t *testing.T) {
 	t.Cleanup(func() { truncate(t) })
 
-	place := models.Place{Name: "Test Place", Lat: 52.5, Lng: 13.4, Category: models.CategoryCafe, Source: "test"}
+	place := models.Place{Name: "Test Place", Lat: 52.5, Lng: 13.4, Category: models.CategoryCafe, Rank: models.RankEstablishment, Source: "test"}
 	testDB.Create(&place)
 
 	stepHeight := 0.1
@@ -369,6 +374,7 @@ func TestHandleGetPlace_ReturnsPlaceWithAccessibility(t *testing.T) {
 		Lat:      52.5,
 		Lng:      13.4,
 		Category: models.CategoryCafe,
+		Rank:     models.RankEstablishment,
 		Source:   "test",
 		Accessibility: &models.AccessibilityProfile{
 			OverallStatus: models.StatusAccessible,
@@ -417,6 +423,7 @@ func TestHandleGetPlace_InheritsParentComponents(t *testing.T) {
 		Lat:      52.5,
 		Lng:      13.4,
 		Category: models.CategoryMall,
+		Rank:     models.RankEstablishment,
 		Source:   "test",
 		Accessibility: &models.AccessibilityProfile{
 			OverallStatus: models.StatusAccessible,
@@ -432,6 +439,7 @@ func TestHandleGetPlace_InheritsParentComponents(t *testing.T) {
 		Lat:      52.5,
 		Lng:      13.4,
 		Category: models.CategoryShop,
+		Rank:     models.RankEstablishment,
 		Source:   "test",
 		ParentID: &parent.ID,
 	}
@@ -480,6 +488,7 @@ func TestHandleGetPlace_ChildOverridesParentComponent(t *testing.T) {
 		Lat:      52.5,
 		Lng:      13.4,
 		Category: models.CategoryMall,
+		Rank:     models.RankEstablishment,
 		Source:   "test",
 		Accessibility: &models.AccessibilityProfile{
 			OverallStatus: models.StatusAccessible,
@@ -495,6 +504,7 @@ func TestHandleGetPlace_ChildOverridesParentComponent(t *testing.T) {
 		Lat:      52.5,
 		Lng:      13.4,
 		Category: models.CategoryShop,
+		Rank:     models.RankEstablishment,
 		Source:   "test",
 		ParentID: &parent.ID,
 		Accessibility: &models.AccessibilityProfile{
@@ -548,6 +558,7 @@ func TestHandleGetPlace_NoParentReturnsRawData(t *testing.T) {
 		Lat:      52.5,
 		Lng:      13.4,
 		Category: models.CategoryCafe,
+		Rank:     models.RankEstablishment,
 		Source:   "test",
 		Accessibility: &models.AccessibilityProfile{
 			OverallStatus: models.StatusAccessible,
@@ -623,6 +634,7 @@ func TestHandlePostPlace_StatusDefaultsToActive(t *testing.T) {
 		Lat:      52.5,
 		Lng:      13.4,
 		Category: models.CategoryCafe,
+		Rank:     models.RankEstablishment,
 		Source:   "test",
 	})
 
@@ -650,6 +662,7 @@ func TestHandlePostPlace_ExternalIDsRoundTrip(t *testing.T) {
 		Lat:         52.5,
 		Lng:         13.4,
 		Category:    models.CategoryCafe,
+		Rank:        models.RankEstablishment,
 		Source:      "osm",
 		ExternalIDs: models.ExternalIDs{"osm": models.ExternalRef{ID: "node/123456", Confidence: 1.0}},
 	})
@@ -676,7 +689,7 @@ func TestHandlePostPlace_ExternalIDsRoundTrip(t *testing.T) {
 func TestHandlePatchAccessibility_UserVerifiedDefaultsFalse(t *testing.T) {
 	t.Cleanup(func() { truncate(t) })
 
-	place := models.Place{Name: "Test Cafe", Lat: 52.5, Lng: 13.4, Category: models.CategoryCafe, Source: "test"}
+	place := models.Place{Name: "Test Cafe", Lat: 52.5, Lng: 13.4, Category: models.CategoryCafe, Rank: models.RankEstablishment, Source: "test"}
 	testDB.Create(&place)
 
 	body, _ := json.Marshal(models.AccessibilityProfile{OverallStatus: models.StatusAccessible})

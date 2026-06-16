@@ -9,7 +9,7 @@ CREATE TABLE IF NOT EXISTS places (
     lat        DOUBLE PRECISION,
     geometry   JSONB,
     category   TEXT,
-    rank       INTEGER,
+    rank       INTEGER NOT NULL CHECK (rank IN (1, 2, 3)),
     parent_id  UUID REFERENCES places(id),
     tags       JSONB,
     source     TEXT,
@@ -19,3 +19,5 @@ CREATE TABLE IF NOT EXISTS places (
 
 CREATE INDEX IF NOT EXISTS idx_places_geog
     ON places USING GIST (geography(ST_Point(lng, lat)));
+
+COMMENT ON COLUMN places.rank IS '1 = Landmark (major hubs, hospitals, universities), 2 = Establishment (standard commercial/public), 3 = Feature (minor utilities: toilets, ATMs, shelters)';

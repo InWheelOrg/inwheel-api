@@ -49,6 +49,7 @@ func TestExternalIngest_RoutesAllThreeOutcomes(t *testing.T) {
 			Lat:      46.4628,
 			Lng:      6.8417,
 			Category: models.CategoryCafe,
+			Rank:     models.RankEstablishment,
 			Source:   "osm",
 			Status:   models.PlaceStatusActive,
 			Tags: models.PlaceTags{
@@ -64,6 +65,7 @@ func TestExternalIngest_RoutesAllThreeOutcomes(t *testing.T) {
 			Lat:      46.462575,
 			Lng:      6.8417,
 			Category: models.CategoryCafe,
+			Rank:     models.RankEstablishment,
 			Source:   "osm",
 			Status:   models.PlaceStatusActive,
 			ExternalIDs: models.ExternalIDs{

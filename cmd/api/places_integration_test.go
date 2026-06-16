@@ -42,6 +42,7 @@ func TestHandleGetPlaces_DefaultPagination(t *testing.T) {
 			Lat:       52.5,
 			Lng:       13.4,
 			Category:  models.CategoryCafe,
+			Rank:      models.RankEstablishment,
 			Source:    "test",
 			UpdatedAt: time.Now().Add(time.Duration(i) * time.Second),
 		}
@@ -75,6 +76,7 @@ func TestHandleGetPlaces_LastPageHasNoCursor(t *testing.T) {
 			Lat:      52.5,
 			Lng:      13.4,
 			Category: models.CategoryCafe,
+			Rank:     models.RankEstablishment,
 			Source:   "test",
 		}
 		testDB.Create(&p)
@@ -109,6 +111,7 @@ func TestHandleGetPlaces_CursorAdvancesPage(t *testing.T) {
 			Lat:       52.5,
 			Lng:       13.4,
 			Category:  models.CategoryCafe,
+			Rank:      models.RankEstablishment,
 			Source:    "test",
 			UpdatedAt: base.Add(time.Duration(i) * time.Second),
 		}
@@ -169,6 +172,7 @@ func TestHandleGetPlaces_DefaultLimitIs20(t *testing.T) {
 			Lat:      52.5,
 			Lng:      13.4,
 			Category: models.CategoryCafe,
+			Rank:     models.RankEstablishment,
 			Source:   "test",
 		}
 		testDB.Create(&p)
@@ -222,12 +226,13 @@ func TestHandleGetPlaces_ProximityPaginated(t *testing.T) {
 			Lat:      52.52 + float64(i)*0.001,
 			Lng:      13.405,
 			Category: models.CategoryCafe,
+			Rank:     models.RankEstablishment,
 			Source:   "test",
 		}
 		testDB.Create(&p)
 		berlin = append(berlin, p)
 	}
-	london := models.Place{Name: "London", Lat: 51.507, Lng: -0.127, Category: models.CategoryCafe, Source: "test"}
+	london := models.Place{Name: "London", Lat: 51.507, Lng: -0.127, Category: models.CategoryCafe, Rank: models.RankEstablishment, Source: "test"}
 	testDB.Create(&london)
 
 	// First page of proximity query.
@@ -275,11 +280,12 @@ func TestHandleGetPlaces_BoundingBoxPaginated(t *testing.T) {
 			Lat:      52.5 + float64(i)*0.01,
 			Lng:      13.4,
 			Category: models.CategoryCafe,
+			Rank:     models.RankEstablishment,
 			Source:   "test",
 		}
 		testDB.Create(&p)
 	}
-	london := models.Place{Name: "London", Lat: 51.507, Lng: -0.127, Category: models.CategoryCafe, Source: "test"}
+	london := models.Place{Name: "London", Lat: 51.507, Lng: -0.127, Category: models.CategoryCafe, Rank: models.RankEstablishment, Source: "test"}
 	testDB.Create(&london)
 
 	r := httptest.NewRequest(http.MethodGet, "/v1/places?min_lng=10.0&min_lat=50.0&max_lng=15.0&max_lat=55.0&limit=3", nil)
@@ -326,6 +332,7 @@ func TestHandleGetPlaces_PreloadsAccessibility(t *testing.T) {
 		Lat:      52.5,
 		Lng:      13.4,
 		Category: models.CategoryCafe,
+		Rank:     models.RankEstablishment,
 		Source:   "test",
 		Accessibility: &models.AccessibilityProfile{
 			OverallStatus: models.StatusAccessible,

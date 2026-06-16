@@ -192,7 +192,8 @@ func TestRunCanonical_WritesAccessibilityProfiles(t *testing.T) {
 				place: models.Place{
 					OSMID: 1001, OSMType: models.OSMNode, Name: "Plain",
 					Lat: 46.4620, Lng: 6.8400, Category: models.CategoryCafe,
-					Status: models.PlaceStatusActive,
+					Rank:        models.RankEstablishment,
+					Status:      models.PlaceStatusActive,
 					ExternalIDs: models.ExternalIDs{"osm": {ID: "node/1001", Confidence: 1.0}},
 				},
 			},
@@ -200,7 +201,8 @@ func TestRunCanonical_WritesAccessibilityProfiles(t *testing.T) {
 				place: models.Place{
 					OSMID: 1002, OSMType: models.OSMNode, Name: "Accessible",
 					Lat: 46.4621, Lng: 6.8401, Category: models.CategoryCafe,
-					Status: models.PlaceStatusActive,
+					Rank:        models.RankEstablishment,
+					Status:      models.PlaceStatusActive,
 					ExternalIDs: models.ExternalIDs{"osm": {ID: "node/1002", Confidence: 1.0}},
 				},
 				profile: &models.AccessibilityProfile{OverallStatus: models.StatusAccessible},
@@ -209,7 +211,8 @@ func TestRunCanonical_WritesAccessibilityProfiles(t *testing.T) {
 				place: models.Place{
 					OSMID: 1003, OSMType: models.OSMNode, Name: "Hard Conflict",
 					Lat: 46.4622, Lng: 6.8402, Category: models.CategoryCafe,
-					Status: models.PlaceStatusActive,
+					Rank:        models.RankEstablishment,
+					Status:      models.PlaceStatusActive,
 					ExternalIDs: models.ExternalIDs{"osm": {ID: "node/1003", Confidence: 1.0}},
 				},
 				profile: &models.AccessibilityProfile{
@@ -262,7 +265,8 @@ func TestRunCanonical_DoesNotOverwriteUserVerified(t *testing.T) {
 	seed := models.Place{
 		OSMID: 2001, OSMType: models.OSMNode, Name: "Verified",
 		Lat: 46.5000, Lng: 6.9000, Category: models.CategoryCafe,
-		Status: models.PlaceStatusActive,
+		Rank:        models.RankEstablishment,
+		Status:      models.PlaceStatusActive,
 		ExternalIDs: models.ExternalIDs{"osm": {ID: "node/2001", Confidence: 1.0}},
 	}
 	if err := db.Create(&seed).Error; err != nil {
@@ -281,7 +285,8 @@ func TestRunCanonical_DoesNotOverwriteUserVerified(t *testing.T) {
 			place: models.Place{
 				OSMID: 2001, OSMType: models.OSMNode, Name: "Verified",
 				Lat: 46.5000, Lng: 6.9000, Category: models.CategoryCafe,
-				Status: models.PlaceStatusActive,
+				Rank:        models.RankEstablishment,
+				Status:      models.PlaceStatusActive,
 				ExternalIDs: models.ExternalIDs{"osm": {ID: "node/2001", Confidence: 1.0}},
 			},
 			profile: &models.AccessibilityProfile{OverallStatus: models.StatusAccessible},

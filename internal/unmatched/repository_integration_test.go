@@ -481,7 +481,7 @@ func TestFindCandidatesNearTouched_ReturnsDistinctRowsNearTouchedPlaces(t *testi
 	for i, id := range placeIDs {
 		if _, err := sqlDB.ExecContext(ctx, `
 			INSERT INTO places (id, name, lat, lng, category, rank, source, status, tags, external_ids, created_at, updated_at)
-			VALUES ($1, $2, $3, $4, 'cafe', 0, 'osm', 'active', '{}', '{}', NOW(), NOW())
+			VALUES ($1, $2, $3, $4, 'cafe', 2, 'osm', 'active', '{}', '{}', NOW(), NOW())
 		`, id, "Place "+id, 46.4628+float64(i)*0.00001, 6.8417); err != nil {
 			t.Fatalf("insert seed place: %v", err)
 		}

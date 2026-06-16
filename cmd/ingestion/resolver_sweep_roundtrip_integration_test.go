@@ -66,6 +66,7 @@ func TestResolverEnqueueIsConsumableBySweep(t *testing.T) {
 		Lat:      46.4628,
 		Lng:      6.8417,
 		Category: models.CategoryCafe,
+		Rank:     models.RankEstablishment,
 		Source:   "osm",
 		Status:   models.PlaceStatusActive,
 		Tags: models.PlaceTags{
