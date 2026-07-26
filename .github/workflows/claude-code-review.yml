@@ -44,5 +44,5 @@ jobs:
                 -f description="<one line summary>"
             Use state=failure if you posted any Important findings, state=success otherwise.
           claude_args: |
-            --max-turns 20
+            --max-turns 40
             --allowedTools "mcp__github_inline_comment__create_inline_comment,Bash(gh pr comment:*),Bash(gh pr diff:*),Bash(gh pr view:*),Bash(gh api *),Read,Grep,Glob"
