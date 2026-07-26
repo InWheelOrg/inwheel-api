@@ -21,6 +21,8 @@ import (
 	"github.com/InWheelOrg/inwheel-api/pkg/models"
 )
 
+func boolPtr(b bool) *bool { return &b }
+
 func TestUpsertBatch_InsertsNewPlaces(t *testing.T) {
 	ctx := context.Background()
 	db, cleanup, err := testhelpers.StartPostgres(ctx)
@@ -242,7 +244,7 @@ func TestRepository_UpsertProfile_CreatesWhenAbsent(t *testing.T) {
 	placeID := mustCreatePlace(ctx, t, gormDB, 1001, "Profile Test Place")
 
 	profile := &models.AccessibilityProfile{
-		OverallStatus: models.StatusAccessible,
+		Entrance: &models.EntranceProps{IsLevel: boolPtr(true)},
 	}
 	created, err := repo.UpsertProfile(ctx, placeID, profile)
 	if err != nil {
@@ -256,8 +258,8 @@ func TestRepository_UpsertProfile_CreatesWhenAbsent(t *testing.T) {
 	if err := gormDB.Where("place_id = ?", placeID).First(&got).Error; err != nil {
 		t.Fatalf("load profile: %v", err)
 	}
-	if got.OverallStatus != models.StatusAccessible {
-		t.Errorf("OverallStatus = %q, want %q", got.OverallStatus, models.StatusAccessible)
+	if got.Entrance == nil || got.Entrance.IsLevel == nil || !*got.Entrance.IsLevel {
+		t.Errorf("Entrance.IsLevel = %v, want true", got.Entrance)
 	}
 	if got.PlaceID != placeID {
 		t.Errorf("PlaceID = %q, want %q", got.PlaceID, placeID)
@@ -275,7 +277,7 @@ func TestRepository_UpsertProfile_UpdatesWhenPresent(t *testing.T) {
 	repo := place.NewRepository(gormDB)
 	placeID := mustCreatePlace(ctx, t, gormDB, 1002, "Profile Update Place")
 
-	first := &models.AccessibilityProfile{OverallStatus: models.StatusUnknown}
+	first := &models.AccessibilityProfile{Entrance: &models.EntranceProps{IsLevel: boolPtr(false)}}
 	created, err := repo.UpsertProfile(ctx, placeID, first)
 	if err != nil {
 		t.Fatalf("first UpsertProfile: %v", err)
@@ -284,7 +286,7 @@ func TestRepository_UpsertProfile_UpdatesWhenPresent(t *testing.T) {
 		t.Errorf("created = false, want true on first insert")
 	}
 
-	second := &models.AccessibilityProfile{OverallStatus: models.StatusLimited}
+	second := &models.AccessibilityProfile{Entrance: &models.EntranceProps{IsLevel: boolPtr(true)}}
 	created, err = repo.UpsertProfile(ctx, placeID, second)
 	if err != nil {
 		t.Fatalf("second UpsertProfile: %v", err)
@@ -297,8 +299,8 @@ func TestRepository_UpsertProfile_UpdatesWhenPresent(t *testing.T) {
 	if err := gormDB.Where("place_id = ?", placeID).First(&got).Error; err != nil {
 		t.Fatalf("load profile: %v", err)
 	}
-	if got.OverallStatus != models.StatusLimited {
-		t.Errorf("OverallStatus = %q, want %q", got.OverallStatus, models.StatusLimited)
+	if got.Entrance == nil || got.Entrance.IsLevel == nil || !*got.Entrance.IsLevel {
+		t.Errorf("Entrance.IsLevel = %v, want true (updated)", got.Entrance)
 	}
 	var count int64
 	gormDB.Model(&models.AccessibilityProfile{}).Where("place_id = ?", placeID).Count(&count)
@@ -318,13 +320,13 @@ func TestRepository_UpsertProfile_OverwritesUserVerified(t *testing.T) {
 	repo := place.NewRepository(gormDB)
 	placeID := mustCreatePlace(ctx, t, gormDB, 1003, "User Verified Overwrite Place")
 
-	if _, err := repo.UpsertProfile(ctx, placeID, &models.AccessibilityProfile{OverallStatus: models.StatusAccessible, UserVerified: true}); err != nil {
+	if _, err := repo.UpsertProfile(ctx, placeID, &models.AccessibilityProfile{Entrance: &models.EntranceProps{IsLevel: boolPtr(true)}, UserVerified: true}); err != nil {
 		t.Fatalf("seed: %v", err)
 	}
 
 	override := &models.AccessibilityProfile{
-		OverallStatus: models.StatusInaccessible,
-		UserVerified:  false,
+		Entrance:     &models.EntranceProps{IsLevel: boolPtr(false)},
+		UserVerified: false,
 	}
 	if _, err := repo.UpsertProfile(ctx, placeID, override); err != nil {
 		t.Fatalf("override UpsertProfile: %v", err)
@@ -334,8 +336,8 @@ func TestRepository_UpsertProfile_OverwritesUserVerified(t *testing.T) {
 	if err := gormDB.Where("place_id = ?", placeID).First(&got).Error; err != nil {
 		t.Fatalf("load profile: %v", err)
 	}
-	if got.OverallStatus != models.StatusInaccessible {
-		t.Errorf("OverallStatus = %q, want %q", got.OverallStatus, models.StatusInaccessible)
+	if got.Entrance == nil || got.Entrance.IsLevel == nil || *got.Entrance.IsLevel {
+		t.Errorf("Entrance.IsLevel = %v, want false (overwritten)", got.Entrance)
 	}
 }
 
@@ -348,7 +350,7 @@ func TestRepository_UpsertProfile_PlaceNotFound(t *testing.T) {
 	defer cleanup()
 
 	repo := place.NewRepository(db)
-	_, err = repo.UpsertProfile(ctx, "00000000-0000-0000-0000-000000000000", &models.AccessibilityProfile{OverallStatus: models.StatusAccessible})
+	_, err = repo.UpsertProfile(ctx, "00000000-0000-0000-0000-000000000000", &models.AccessibilityProfile{})
 	if !errors.Is(err, place.ErrPlaceNotFound) {
 		t.Errorf("err = %v, want ErrPlaceNotFound", err)
 	}
@@ -364,7 +366,7 @@ func TestRepository_UpsertProfileIngestion_InsertsWhenAbsent(t *testing.T) {
 	repo := place.NewRepository(db)
 	placeID := mustCreatePlace(ctx, t, db, 9004, "Café Pascal Ingestion")
 
-	written, err := repo.UpsertProfileIngestion(ctx, placeID, &models.AccessibilityProfile{OverallStatus: models.StatusAccessible})
+	written, err := repo.UpsertProfileIngestion(ctx, placeID, &models.AccessibilityProfile{Entrance: &models.EntranceProps{IsLevel: boolPtr(true)}})
 	if err != nil {
 		t.Fatalf("UpsertProfileIngestion: %v", err)
 	}
@@ -373,8 +375,8 @@ func TestRepository_UpsertProfileIngestion_InsertsWhenAbsent(t *testing.T) {
 	}
 	var stored models.AccessibilityProfile
 	db.Where("place_id = ?", placeID).First(&stored)
-	if stored.OverallStatus != models.StatusAccessible {
-		t.Errorf("OverallStatus = %q, want accessible", stored.OverallStatus)
+	if stored.Entrance == nil || stored.Entrance.IsLevel == nil || !*stored.Entrance.IsLevel {
+		t.Errorf("Entrance.IsLevel = %v, want true", stored.Entrance)
 	}
 }
 
@@ -388,10 +390,10 @@ func TestRepository_UpsertProfileIngestion_OverwritesNonVerified(t *testing.T) {
 	repo := place.NewRepository(db)
 	placeID := mustCreatePlace(ctx, t, db, 9005, "Café Pascal Ingestion2")
 
-	if _, err := repo.UpsertProfileIngestion(ctx, placeID, &models.AccessibilityProfile{OverallStatus: models.StatusLimited}); err != nil {
+	if _, err := repo.UpsertProfileIngestion(ctx, placeID, &models.AccessibilityProfile{Entrance: &models.EntranceProps{IsLevel: boolPtr(false)}}); err != nil {
 		t.Fatalf("seed: %v", err)
 	}
-	written, err := repo.UpsertProfileIngestion(ctx, placeID, &models.AccessibilityProfile{OverallStatus: models.StatusAccessible})
+	written, err := repo.UpsertProfileIngestion(ctx, placeID, &models.AccessibilityProfile{Entrance: &models.EntranceProps{IsLevel: boolPtr(true)}})
 	if err != nil {
 		t.Fatalf("second: %v", err)
 	}
@@ -400,8 +402,8 @@ func TestRepository_UpsertProfileIngestion_OverwritesNonVerified(t *testing.T) {
 	}
 	var stored models.AccessibilityProfile
 	db.Where("place_id = ?", placeID).First(&stored)
-	if stored.OverallStatus != models.StatusAccessible {
-		t.Errorf("OverallStatus = %q, want accessible", stored.OverallStatus)
+	if stored.Entrance == nil || stored.Entrance.IsLevel == nil || !*stored.Entrance.IsLevel {
+		t.Errorf("Entrance.IsLevel = %v, want true (overwritten)", stored.Entrance)
 	}
 }
 
@@ -415,10 +417,10 @@ func TestRepository_UpsertProfileIngestion_SkipsUserVerified(t *testing.T) {
 	repo := place.NewRepository(db)
 	placeID := mustCreatePlace(ctx, t, db, 9006, "Café Pascal Ingestion3")
 
-	if _, err := repo.UpsertProfile(ctx, placeID, &models.AccessibilityProfile{OverallStatus: models.StatusAccessible, UserVerified: true}); err != nil {
+	if _, err := repo.UpsertProfile(ctx, placeID, &models.AccessibilityProfile{Entrance: &models.EntranceProps{IsLevel: boolPtr(true)}, UserVerified: true}); err != nil {
 		t.Fatalf("seed: %v", err)
 	}
-	written, err := repo.UpsertProfileIngestion(ctx, placeID, &models.AccessibilityProfile{OverallStatus: models.StatusInaccessible})
+	written, err := repo.UpsertProfileIngestion(ctx, placeID, &models.AccessibilityProfile{Entrance: &models.EntranceProps{IsLevel: boolPtr(false)}})
 	if err != nil {
 		t.Fatalf("machine: %v", err)
 	}
@@ -427,8 +429,8 @@ func TestRepository_UpsertProfileIngestion_SkipsUserVerified(t *testing.T) {
 	}
 	var stored models.AccessibilityProfile
 	db.Where("place_id = ?", placeID).First(&stored)
-	if stored.OverallStatus != models.StatusAccessible {
-		t.Errorf("user-verified row must survive; got %q", stored.OverallStatus)
+	if stored.Entrance == nil || stored.Entrance.IsLevel == nil || !*stored.Entrance.IsLevel {
+		t.Errorf("user-verified row must survive; Entrance.IsLevel = %v, want true", stored.Entrance)
 	}
 }
 

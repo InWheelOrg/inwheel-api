@@ -24,13 +24,13 @@ components:
 
     # ── Enum helpers ──────────────────────────────────────────────────────────
 
-    A11yStatus:
+    DoorType:
       type: string
-      enum: [accessible, limited, inaccessible, unknown]
+      enum: [automatic, manual, revolving, none]
 
-    A11yComponentType:
+    SurfaceType:
       type: string
-      enum: [entrance, restroom, parking, elevator, other]
+      enum: [asphalt, paving_stones, cobblestone, gravel, concrete, wood, carpet, tiles]
 
     Category:
       type: string
@@ -58,8 +58,56 @@ components:
     # x-go-type tells oapi-codegen "don't generate a new struct, use this one".
     # The spec schema still drives middleware validation; the Go type is imported.
 
-    EntranceProperties:
-      x-go-type: models.EntranceProperties
+    DoorProps:
+      x-go-type: models.DoorProps
+      x-go-type-import:
+        name: models
+        path: github.com/InWheelOrg/inwheel-api/pkg/models
+      type: object
+      properties:
+        type:
+          $ref: "#/components/schemas/DoorType"
+        width:
+          type: number
+          format: double
+          minimum: 0
+          maximum: 10
+
+    EntranceProps:
+      x-go-type: models.EntranceProps
+      x-go-type-import:
+        name: models
+        path: github.com/InWheelOrg/inwheel-api/pkg/models
+      type: object
+      properties:
+        is_level:
+          type: boolean
+        has_fixed_ramp:
+          type: boolean
+        has_removable_ramp:
+          type: boolean
+        slope_percent:
+          type: number
+          format: double
+          minimum: 0
+          maximum: 100
+        width:
+          type: number
+          format: double
+          minimum: 0
+          maximum: 10
+        door:
+          $ref: "#/components/schemas/DoorProps"
+        has_intercom:
+          type: boolean
+        audit_flags:
+          type: array
+          items:
+            type: string
+          readOnly: true
+
+    PathwayProps:
+      x-go-type: models.PathwayProps
       x-go-type-import:
         name: models
         path: github.com/InWheelOrg/inwheel-api/pkg/models
@@ -69,40 +117,59 @@ components:
           type: number
           format: double
           minimum: 0
-          maximum: 10
-        has_ramp:
+          maximum: 20
+        surface:
+          $ref: "#/components/schemas/SurfaceType"
+        is_kerbstone_free:
           type: boolean
-        is_automatic:
+        has_steps:
           type: boolean
-        has_step:
-          type: boolean
-        step_height:
-          type: number
-          format: double
-          minimum: 0
-          maximum: 1
+        audit_flags:
+          type: array
+          items:
+            type: string
+          readOnly: true
 
-    RestroomProperties:
-      x-go-type: models.RestroomProperties
+    RestroomProps:
+      x-go-type: models.RestroomProps
       x-go-type-import:
         name: models
         path: github.com/InWheelOrg/inwheel-api/pkg/models
       type: object
       properties:
-        wheelchair_accessible:
-          type: boolean
-        grab_rails:
-          type: boolean
-        changing_table:
+        is_accessible:
           type: boolean
         door_width:
           type: number
           format: double
           minimum: 0
           maximum: 10
+        turning_radius:
+          type: number
+          format: double
+          minimum: 0
+          maximum: 10
+        has_grab_rails:
+          type: boolean
+        has_roll_in_shower:
+          type: boolean
+        toilet_seat_height:
+          type: number
+          format: double
+          minimum: 0
+          maximum: 1
+        has_emergency_pull:
+          type: boolean
+        has_changing_table:
+          type: boolean
+        audit_flags:
+          type: array
+          items:
+            type: string
+          readOnly: true
 
-    ParkingProperties:
-      x-go-type: models.ParkingProperties
+    ParkingProps:
+      x-go-type: models.ParkingProps
       x-go-type-import:
         name: models
         path: github.com/InWheelOrg/inwheel-api/pkg/models
@@ -114,9 +181,26 @@ components:
           type: integer
           minimum: 0
           maximum: 10000
+        distance_to_entrance:
+          type: number
+          format: double
+          minimum: 0
+          maximum: 10000
+        width:
+          type: number
+          format: double
+          minimum: 0
+          maximum: 20
+        has_dedicated_signage:
+          type: boolean
+        audit_flags:
+          type: array
+          items:
+            type: string
+          readOnly: true
 
-    ElevatorProperties:
-      x-go-type: models.ElevatorProperties
+    ElevatorProps:
+      x-go-type: models.ElevatorProps
       x-go-type-import:
         name: models
         path: github.com/InWheelOrg/inwheel-api/pkg/models
@@ -132,43 +216,34 @@ components:
           format: double
           minimum: 0
           maximum: 10
-        braille:
+        door_width:
+          type: number
+          format: double
+          minimum: 0
+          maximum: 10
+        has_braille:
           type: boolean
-        audio:
+        has_audio:
           type: boolean
-
-    A11yComponent:
-      x-go-type: models.A11yComponent
-      x-go-type-import:
-        name: models
-        path: github.com/InWheelOrg/inwheel-api/pkg/models
-      type: object
-      required: [type]
-      properties:
-        type:
-          $ref: "#/components/schemas/A11yComponentType"
-        is_inherited:
-          type: boolean
-        source_id:
-          type: string
-          format: uuid
-        overall_status:
-          $ref: "#/components/schemas/A11yStatus"
         audit_flags:
           type: array
           items:
             type: string
-        entrance:
-          $ref: "#/components/schemas/EntranceProperties"
-        restroom:
-          $ref: "#/components/schemas/RestroomProperties"
-        parking:
-          $ref: "#/components/schemas/ParkingProperties"
-        elevator:
-          $ref: "#/components/schemas/ElevatorProperties"
-        metadata:
-          type: object
-          additionalProperties: true
+          readOnly: true
+
+    SourceReport:
+      type: object
+      required: [source, value, recorded_at]
+      properties:
+        source:
+          type: string
+          example: "osm"
+        value:
+          type: string
+          example: "yes"
+        recorded_at:
+          type: string
+          format: date-time
 
     AccessibilityProfile:
       x-go-type: models.AccessibilityProfile
@@ -176,7 +251,6 @@ components:
         name: models
         path: github.com/InWheelOrg/inwheel-api/pkg/models
       type: object
-      required: [overall_status]
       properties:
         id:
           type: string
@@ -186,12 +260,20 @@ components:
           type: string
           format: uuid
           readOnly: true
-        overall_status:
-          $ref: "#/components/schemas/A11yStatus"
-        components:
+        source_reports:
           type: array
           items:
-            $ref: "#/components/schemas/A11yComponent"
+            $ref: "#/components/schemas/SourceReport"
+        entrance:
+          $ref: "#/components/schemas/EntranceProps"
+        pathways:
+          $ref: "#/components/schemas/PathwayProps"
+        restroom:
+          $ref: "#/components/schemas/RestroomProps"
+        parking:
+          $ref: "#/components/schemas/ParkingProps"
+        elevator:
+          $ref: "#/components/schemas/ElevatorProps"
         updated_at:
           type: string
           format: date-time
@@ -330,27 +412,6 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/FieldError"
-
-    ConflictItem:
-      type: object
-      required: [component, reason]
-      properties:
-        component:
-          type: string
-        reason:
-          type: string
-
-    ConflictError:
-      type: object
-      required: [error, conflicts]
-      properties:
-        error:
-          type: string
-          example: "accessibility data contains conflicts"
-        conflicts:
-          type: array
-          items:
-            $ref: "#/components/schemas/ConflictItem"
 
     ErrorResponse:
       type: object
@@ -504,12 +565,6 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
-        "422":
-          description: Accessibility data contains conflicts
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ConflictError"
 
   /places/{id}:
     get:
@@ -553,8 +608,7 @@ paths:
       summary: Update or create an accessibility profile
       description: |
         Upserts the accessibility profile for the given place.
-        Audit flags are computed from submitted component properties.
-        Returns 422 if any component's status directly contradicts its audit flags.
+        Audit flags are computed server-side from submitted property values.
       security:
         - ApiKeyAuth: []
       parameters:
@@ -595,12 +649,6 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
-        "422":
-          description: Accessibility data contains conflicts
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ConflictError"
 
   # ── Auth ─────────────────────────────────────────────────────────────────
 

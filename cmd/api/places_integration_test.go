@@ -335,7 +335,7 @@ func TestHandleGetPlaces_PreloadsAccessibility(t *testing.T) {
 		Rank:     models.RankEstablishment,
 		Source:   "test",
 		Accessibility: &models.AccessibilityProfile{
-			OverallStatus: models.StatusAccessible,
+			Entrance: &models.EntranceProps{IsLevel: boolPtr(true)},
 		},
 	}
 	testDB.Create(&p)

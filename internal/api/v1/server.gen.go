@@ -29,93 +29,66 @@ const (
 	ApiKeyAuthScopes apiKeyAuthContextKey = "ApiKeyAuth.Scopes"
 )
 
-// Defines values for A11yComponentType.
-const (
-	A11yComponentTypeElevator A11yComponentType = "elevator"
-	A11yComponentTypeEntrance A11yComponentType = "entrance"
-	A11yComponentTypeOther    A11yComponentType = "other"
-	A11yComponentTypeParking  A11yComponentType = "parking"
-	A11yComponentTypeRestroom A11yComponentType = "restroom"
-)
-
-// Valid indicates whether the value is a known member of the A11yComponentType enum.
-func (e A11yComponentType) Valid() bool {
-	switch e {
-	case A11yComponentTypeElevator:
-		return true
-	case A11yComponentTypeEntrance:
-		return true
-	case A11yComponentTypeOther:
-		return true
-	case A11yComponentTypeParking:
-		return true
-	case A11yComponentTypeRestroom:
-		return true
-	default:
-		return false
-	}
-}
-
-// Defines values for A11yStatus.
-const (
-	Accessible   A11yStatus = "accessible"
-	Inaccessible A11yStatus = "inaccessible"
-	Limited      A11yStatus = "limited"
-	Unknown      A11yStatus = "unknown"
-)
-
-// Valid indicates whether the value is a known member of the A11yStatus enum.
-func (e A11yStatus) Valid() bool {
-	switch e {
-	case Accessible:
-		return true
-	case Inaccessible:
-		return true
-	case Limited:
-		return true
-	case Unknown:
-		return true
-	default:
-		return false
-	}
-}
-
 // Defines values for Category.
 const (
-	CategoryAirport      Category = "airport"
-	CategoryCafe         Category = "cafe"
-	CategoryEntrance     Category = "entrance"
-	CategoryMall         Category = "mall"
-	CategoryOther        Category = "other"
-	CategoryParking      Category = "parking"
-	CategoryRestaurant   Category = "restaurant"
-	CategoryShop         Category = "shop"
-	CategoryToilet       Category = "toilet"
-	CategoryTrainStation Category = "train_station"
+	Airport      Category = "airport"
+	Cafe         Category = "cafe"
+	Entrance     Category = "entrance"
+	Mall         Category = "mall"
+	Other        Category = "other"
+	Parking      Category = "parking"
+	Restaurant   Category = "restaurant"
+	Shop         Category = "shop"
+	Toilet       Category = "toilet"
+	TrainStation Category = "train_station"
 )
 
 // Valid indicates whether the value is a known member of the Category enum.
 func (e Category) Valid() bool {
 	switch e {
-	case CategoryAirport:
+	case Airport:
 		return true
-	case CategoryCafe:
+	case Cafe:
 		return true
-	case CategoryEntrance:
+	case Entrance:
 		return true
-	case CategoryMall:
+	case Mall:
 		return true
-	case CategoryOther:
+	case Other:
 		return true
-	case CategoryParking:
+	case Parking:
 		return true
-	case CategoryRestaurant:
+	case Restaurant:
 		return true
-	case CategoryShop:
+	case Shop:
 		return true
-	case CategoryToilet:
+	case Toilet:
 		return true
-	case CategoryTrainStation:
+	case TrainStation:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for DoorType.
+const (
+	Automatic DoorType = "automatic"
+	Manual    DoorType = "manual"
+	None      DoorType = "none"
+	Revolving DoorType = "revolving"
+)
+
+// Valid indicates whether the value is a known member of the DoorType enum.
+func (e DoorType) Valid() bool {
+	switch e {
+	case Automatic:
+		return true
+	case Manual:
+		return true
+	case None:
+		return true
+	case Revolving:
 		return true
 	default:
 		return false
@@ -164,14 +137,41 @@ func (e PlaceStatus) Valid() bool {
 	}
 }
 
-// A11yComponent defines model for A11yComponent.
-type A11yComponent = models.A11yComponent
+// Defines values for SurfaceType.
+const (
+	Asphalt      SurfaceType = "asphalt"
+	Carpet       SurfaceType = "carpet"
+	Cobblestone  SurfaceType = "cobblestone"
+	Concrete     SurfaceType = "concrete"
+	Gravel       SurfaceType = "gravel"
+	PavingStones SurfaceType = "paving_stones"
+	Tiles        SurfaceType = "tiles"
+	Wood         SurfaceType = "wood"
+)
 
-// A11yComponentType defines model for A11yComponentType.
-type A11yComponentType string
-
-// A11yStatus defines model for A11yStatus.
-type A11yStatus string
+// Valid indicates whether the value is a known member of the SurfaceType enum.
+func (e SurfaceType) Valid() bool {
+	switch e {
+	case Asphalt:
+		return true
+	case Carpet:
+		return true
+	case Cobblestone:
+		return true
+	case Concrete:
+		return true
+	case Gravel:
+		return true
+	case PavingStones:
+		return true
+	case Tiles:
+		return true
+	case Wood:
+		return true
+	default:
+		return false
+	}
+}
 
 // AccessibilityProfile defines model for AccessibilityProfile.
 type AccessibilityProfile = models.AccessibilityProfile
@@ -179,23 +179,17 @@ type AccessibilityProfile = models.AccessibilityProfile
 // Category defines model for Category.
 type Category string
 
-// ConflictError defines model for ConflictError.
-type ConflictError struct {
-	Conflicts []ConflictItem `json:"conflicts"`
-	Error     string         `json:"error"`
-}
+// DoorProps defines model for DoorProps.
+type DoorProps = models.DoorProps
 
-// ConflictItem defines model for ConflictItem.
-type ConflictItem struct {
-	Component string `json:"component"`
-	Reason    string `json:"reason"`
-}
+// DoorType defines model for DoorType.
+type DoorType string
 
-// ElevatorProperties defines model for ElevatorProperties.
-type ElevatorProperties = models.ElevatorProperties
+// ElevatorProps defines model for ElevatorProps.
+type ElevatorProps = models.ElevatorProps
 
-// EntranceProperties defines model for EntranceProperties.
-type EntranceProperties = models.EntranceProperties
+// EntranceProps defines model for EntranceProps.
+type EntranceProps = models.EntranceProps
 
 // ErrorResponse defines model for ErrorResponse.
 type ErrorResponse struct {
@@ -214,8 +208,11 @@ type FieldError struct {
 // OSMType defines model for OSMType.
 type OSMType string
 
-// ParkingProperties defines model for ParkingProperties.
-type ParkingProperties = models.ParkingProperties
+// ParkingProps defines model for ParkingProps.
+type ParkingProps = models.ParkingProps
+
+// PathwayProps defines model for PathwayProps.
+type PathwayProps = models.PathwayProps
 
 // Place defines model for Place.
 type Place = models.Place
@@ -244,8 +241,18 @@ type RegisterResponse struct {
 	Email     string    `json:"email"`
 }
 
-// RestroomProperties defines model for RestroomProperties.
-type RestroomProperties = models.RestroomProperties
+// RestroomProps defines model for RestroomProps.
+type RestroomProps = models.RestroomProps
+
+// SourceReport defines model for SourceReport.
+type SourceReport struct {
+	RecordedAt time.Time `json:"recorded_at"`
+	Source     string    `json:"source"`
+	Value      string    `json:"value"`
+}
+
+// SurfaceType defines model for SurfaceType.
+type SurfaceType string
 
 // ValidationError defines model for ValidationError.
 type ValidationError struct {
@@ -867,20 +874,6 @@ func (response CreatePlace401JSONResponse) VisitCreatePlaceResponse(w http.Respo
 	return err
 }
 
-type CreatePlace422JSONResponse ConflictError
-
-func (response CreatePlace422JSONResponse) VisitCreatePlaceResponse(w http.ResponseWriter) error {
-
-	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response); err != nil {
-		return err
-	}
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(422)
-	_, err := buf.WriteTo(w)
-	return err
-}
-
 type GetPlaceRequestObject struct {
 	Id openapi_types.UUID `json:"id"`
 }
@@ -992,20 +985,6 @@ func (response PatchPlaceAccessibility404JSONResponse) VisitPatchPlaceAccessibil
 	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(404)
-	_, err := buf.WriteTo(w)
-	return err
-}
-
-type PatchPlaceAccessibility422JSONResponse ConflictError
-
-func (response PatchPlaceAccessibility422JSONResponse) VisitPatchPlaceAccessibilityResponse(w http.ResponseWriter) error {
-
-	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response); err != nil {
-		return err
-	}
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(422)
 	_, err := buf.WriteTo(w)
 	return err
 }
@@ -1237,52 +1216,54 @@ func (sh *strictHandler) PatchPlaceAccessibility(w http.ResponseWriter, r *http.
 // const string: with thousands of chunks the chained `+` fold is several
 // times slower for the Go compiler than parsing a slice literal.
 var swaggerSpec = []string{
-	"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",
-	"NDIZJ6PlSbK+Xv8rAAD//w==",
+	"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",
+	"AP//",
 }
 
 // decodeSpec returns the embedded OpenAPI spec as raw JSON bytes,

@@ -3,7 +3,6 @@
  * SPDX-License-Identifier: AGPL-3.0-only
  */
 
-// Package models defines the domain types shared across InWheel services.
 package models
 
 import (
@@ -13,144 +12,155 @@ import (
 	"time"
 )
 
-// A11yStatus defines the overall accessibility state of a place.
-type A11yStatus string
-
-const (
-	// StatusAccessible means the place is fully accessible.
-	StatusAccessible A11yStatus = "accessible"
-	// StatusLimited means the place is partially accessible (e.g., requires assistance).
-	StatusLimited A11yStatus = "limited"
-	// StatusInaccessible means the place is not accessible.
-	StatusInaccessible A11yStatus = "inaccessible"
-	// StatusUnknown means accessibility information is not available.
-	StatusUnknown A11yStatus = "unknown"
-)
-
-// A11yComponentType identifies the kind of accessibility feature.
-type A11yComponentType string
-
-const (
-	ComponentEntrance A11yComponentType = "entrance"
-	ComponentRestroom A11yComponentType = "restroom"
-	ComponentParking  A11yComponentType = "parking"
-	ComponentElevator A11yComponentType = "elevator"
-	ComponentOther    A11yComponentType = "other"
-)
-
-// AccessibilityProfile summarizes the accessibility of a place.
+// AccessibilityProfile stores factual accessibility data for a place.
+// Component fields hold measured facts; SourceReports carries raw opinions from
+// external sources (e.g. OSM wheelchair=yes). No server-side accessibility
+// judgment is made; clients apply their own logic per user need.
 type AccessibilityProfile struct {
-	// ID is the unique identifier for the profile.
-	ID string `json:"id,omitzero" gorm:"primaryKey;type:uuid;default:gen_random_uuid()"`
-	// PlaceID is the identifier of the related place.
-	PlaceID string `json:"place_id,omitzero" gorm:"uniqueIndex;type:uuid"`
-	// OverallStatus is the client-submitted accessibility rating, validated against component flags on write.
-	OverallStatus A11yStatus `json:"overall_status"`
-	// Components are the individual accessibility features (entrance, etc).
-	Components A11yComponents `json:"components,omitzero" gorm:"type:jsonb"`
-	// SubmittedBy is the ID of the API key that last wrote this record. Internal only.
-	SubmittedBy *string `json:"-" gorm:"type:uuid"`
-	// SubmittedAt is the timestamp of the last submission.
-	SubmittedAt *time.Time `json:"submitted_at,omitzero"`
-	// UserVerified indicates that a human user explicitly submitted this accessibility data.
-	// When true, the ingestion service will not overwrite this profile with automated data.
-	UserVerified bool `json:"user_verified,omitzero"`
-	// UpdatedAt is the timestamp when the profile was last updated.
-	UpdatedAt time.Time `json:"updated_at,omitzero"`
+	ID            string         `json:"id,omitempty" gorm:"primaryKey;type:uuid;default:gen_random_uuid()"`
+	PlaceID       string         `json:"place_id,omitempty" gorm:"uniqueIndex;type:uuid"`
+	SourceReports SourceReports  `json:"source_reports,omitempty" gorm:"type:jsonb"`
+	Entrance      *EntranceProps `json:"entrance,omitempty" gorm:"type:jsonb"`
+	Pathways      *PathwayProps  `json:"pathways,omitempty" gorm:"type:jsonb"`
+	Restroom      *RestroomProps `json:"restroom,omitempty" gorm:"type:jsonb"`
+	Parking       *ParkingProps  `json:"parking,omitempty" gorm:"type:jsonb"`
+	Elevator      *ElevatorProps `json:"elevator,omitempty" gorm:"type:jsonb"`
+	UserVerified  bool           `json:"user_verified,omitempty"`
+	SubmittedBy   *string        `json:"-" gorm:"type:uuid"`
+	SubmittedAt   *time.Time     `json:"submitted_at,omitempty"`
+	UpdatedAt     time.Time      `json:"updated_at,omitzero"`
 }
 
-// A11yComponent represents a modular accessibility feature.
-type A11yComponent struct {
-	// Type is the kind of component.
-	Type A11yComponentType `json:"type"`
-	// IsInherited is true if the component data is inherited from a parent place.
-	IsInherited bool `json:"is_inherited"`
-	// SourceID is the ID of the Place that owns this specific data.
-	SourceID string `json:"source_id,omitzero"`
-	// OverallStatus is the summary rating of this specific component.
-	OverallStatus A11yStatus `json:"overall_status"`
-	// AuditFlags contains technical violations detected.
-	AuditFlags []string `json:"audit_flags,omitzero"`
-	// Entrance contains properties for an entrance component.
-	Entrance *EntranceProperties `json:"entrance,omitzero"`
-	// Restroom contains properties for a restroom component.
-	Restroom *RestroomProperties `json:"restroom,omitzero"`
-	// Parking contains properties for a parking component.
-	Parking *ParkingProperties `json:"parking,omitzero"`
-	// Elevator contains properties for an elevator component.
-	Elevator *ElevatorProperties `json:"elevator,omitzero"`
-	// Metadata contains additional un-modeled tags or source-specific data.
-	Metadata map[string]any `json:"metadata,omitzero"`
+// SourceReport is a raw opinion about accessibility from a named external source.
+// Records what a source said without interpreting it. Clients decide trust level.
+type SourceReport struct {
+	Source     string    `json:"source"`      // e.g. "osm", "wheelmap", "user"
+	Value      string    `json:"value"`       // raw: "yes", "limited", "no"
+	RecordedAt time.Time `json:"recorded_at"`
 }
 
-// A11yComponents is a custom type, so we can implement SQL scanning.
-type A11yComponents []A11yComponent
+type SourceReports []SourceReport
 
-// EntranceProperties contains technical details about an entrance.
-type EntranceProperties struct {
-	// Width is the clear opening width in meters.
-	Width *float64 `json:"width,omitzero"`
-	// HasRamp indicates if a ramp is present.
-	HasRamp *bool `json:"has_ramp,omitzero"`
-	// IsAutomatic indicates if the door is automatic.
-	IsAutomatic *bool `json:"is_automatic,omitzero"`
-	// HasStep indicates if there is a step at the entrance.
-	HasStep *bool `json:"has_step,omitzero"`
-	// StepHeight is the height of the step in meters.
-	StepHeight *float64 `json:"step_height,omitzero"`
+func (s *SourceReports) Scan(value interface{}) error { return scanJSONB(s, value) }
+func (s SourceReports) Value() (driver.Value, error)  { return marshalJSONB(s) }
+
+type DoorType string
+
+const (
+	DoorAutomatic DoorType = "automatic"
+	DoorManual    DoorType = "manual"
+	DoorRevolving DoorType = "revolving"
+	DoorNone      DoorType = "none"
+)
+
+type SurfaceType string
+
+const (
+	SurfaceAsphalt      SurfaceType = "asphalt"
+	SurfacePavingStones SurfaceType = "paving_stones"
+	SurfaceCobblestone  SurfaceType = "cobblestone"
+	SurfaceGravel       SurfaceType = "gravel"
+	SurfaceConcrete     SurfaceType = "concrete"
+	SurfaceWood         SurfaceType = "wood"
+	SurfaceCarpet       SurfaceType = "carpet"
+	SurfaceTiles        SurfaceType = "tiles"
+)
+
+type DoorProps struct {
+	Type  DoorType `json:"type,omitempty"`
+	Width *float64 `json:"width,omitempty"` // metres, clear opening
 }
 
-// RestroomProperties contains details about a restroom feature.
-type RestroomProperties struct {
-	// WheelchairAccessible indicates if the restroom is accessible to wheelchairs.
-	WheelchairAccessible *bool `json:"wheelchair_accessible,omitzero"`
-	// GrabRails indicates if grab rails are installed.
-	GrabRails *bool `json:"grab_rails,omitzero"`
-	// ChangingTable indicates if a diaper changing table is available.
-	ChangingTable *bool `json:"changing_table,omitzero"`
-	// DoorWidth is the width of the restroom door in meters.
-	DoorWidth *float64 `json:"door_width,omitzero"`
+// EntranceProps. All dimensions in metres. AuditFlags are computed on write.
+// IsInherited and SourceID are set by ComputeEffectiveProfile at read time, never stored.
+type EntranceProps struct {
+	IsLevel          *bool      `json:"is_level,omitempty"`
+	HasFixedRamp     *bool      `json:"has_fixed_ramp,omitempty"`
+	HasRemovableRamp *bool      `json:"has_removable_ramp,omitempty"`
+	SlopePercent     *float64   `json:"slope_percent,omitempty"`
+	Width            *float64   `json:"width,omitempty"`
+	Door             *DoorProps `json:"door,omitempty"`
+	HasIntercom      *bool      `json:"has_intercom,omitempty"`
+	AuditFlags       []string   `json:"audit_flags,omitempty"`
+	IsInherited      bool       `json:"is_inherited,omitempty"`
+	SourceID         string     `json:"source_id,omitempty"`
 }
 
-// ParkingProperties contains details about disabled parking.
-type ParkingProperties struct {
-	// HasDisabledSpaces indicates if there are dedicated disabled parking spots.
-	HasDisabledSpaces *bool `json:"has_disabled_spaces,omitzero"`
-	// Count is the number of disabled parking spaces available.
-	Count *int `json:"count,omitzero"`
+func (p *EntranceProps) Scan(value interface{}) error { return scanJSONB(p, value) }
+func (p EntranceProps) Value() (driver.Value, error)  { return marshalJSONB(p) }
+
+type PathwayProps struct {
+	Width           *float64    `json:"width,omitempty"` // narrowest passage in metres
+	Surface         SurfaceType `json:"surface,omitempty"`
+	IsKerbstoneFree *bool       `json:"is_kerbstone_free,omitempty"`
+	HasSteps        *bool       `json:"has_steps,omitempty"`
+	AuditFlags      []string    `json:"audit_flags,omitempty"`
+	IsInherited     bool        `json:"is_inherited,omitempty"`
+	SourceID        string      `json:"source_id,omitempty"`
 }
 
-// ElevatorProperties contains technical details about an elevator.
-type ElevatorProperties struct {
-	// Width is the elevator cabin width in meters.
-	Width *float64 `json:"width,omitzero"`
-	// Depth is the elevator cabin depth in meters.
-	Depth *float64 `json:"depth,omitzero"`
-	// Braille indicates if there are braille labels on the buttons.
-	Braille *bool `json:"braille,omitzero"`
-	// Audio indicates if there are audio announcements.
-	Audio *bool `json:"audio,omitzero"`
+func (p *PathwayProps) Scan(value interface{}) error { return scanJSONB(p, value) }
+func (p PathwayProps) Value() (driver.Value, error)  { return marshalJSONB(p) }
+
+// RestroomProps. All dimensions in metres.
+type RestroomProps struct {
+	IsAccessible     *bool    `json:"is_accessible,omitempty"`
+	DoorWidth        *float64 `json:"door_width,omitempty"`
+	TurningRadius    *float64 `json:"turning_radius,omitempty"`
+	HasGrabRails     *bool    `json:"has_grab_rails,omitempty"`
+	HasRollInShower  *bool    `json:"has_roll_in_shower,omitempty"`
+	ToiletSeatHeight *float64 `json:"toilet_seat_height,omitempty"`
+	HasEmergencyPull *bool    `json:"has_emergency_pull,omitempty"`
+	HasChangingTable *bool    `json:"has_changing_table,omitempty"`
+	AuditFlags       []string `json:"audit_flags,omitempty"`
+	IsInherited      bool     `json:"is_inherited,omitempty"`
+	SourceID         string   `json:"source_id,omitempty"`
 }
 
-// Scan tells the SQL driver how to read the JSONB bytes into the slice.
-func (c *A11yComponents) Scan(value interface{}) error {
+func (p *RestroomProps) Scan(value interface{}) error { return scanJSONB(p, value) }
+func (p RestroomProps) Value() (driver.Value, error)  { return marshalJSONB(p) }
+
+// ParkingProps. DistanceToEntrance and Width in metres.
+type ParkingProps struct {
+	HasDisabledSpaces   *bool    `json:"has_disabled_spaces,omitempty"`
+	Count               *int     `json:"count,omitempty"`
+	DistanceToEntrance  *float64 `json:"distance_to_entrance,omitempty"`
+	Width               *float64 `json:"width,omitempty"`
+	HasDedicatedSignage *bool    `json:"has_dedicated_signage,omitempty"`
+	AuditFlags          []string `json:"audit_flags,omitempty"`
+	IsInherited         bool     `json:"is_inherited,omitempty"`
+	SourceID            string   `json:"source_id,omitempty"`
+}
+
+func (p *ParkingProps) Scan(value interface{}) error { return scanJSONB(p, value) }
+func (p ParkingProps) Value() (driver.Value, error)  { return marshalJSONB(p) }
+
+// ElevatorProps. Width, Depth, and DoorWidth in metres.
+type ElevatorProps struct {
+	Width       *float64 `json:"width,omitempty"`
+	Depth       *float64 `json:"depth,omitempty"`
+	DoorWidth   *float64 `json:"door_width,omitempty"`
+	HasBraille  *bool    `json:"has_braille,omitempty"`
+	HasAudio    *bool    `json:"has_audio,omitempty"`
+	AuditFlags  []string `json:"audit_flags,omitempty"`
+	IsInherited bool     `json:"is_inherited,omitempty"`
+	SourceID    string   `json:"source_id,omitempty"`
+}
+
+func (p *ElevatorProps) Scan(value interface{}) error { return scanJSONB(p, value) }
+func (p ElevatorProps) Value() (driver.Value, error)  { return marshalJSONB(p) }
+
+func scanJSONB(dest any, value interface{}) error {
 	if value == nil {
-		*c = make(A11yComponents, 0)
 		return nil
 	}
-
-	bytes, ok := value.([]byte)
+	b, ok := value.([]byte)
 	if !ok {
 		return errors.New("type assertion to []byte failed")
 	}
-
-	return json.Unmarshal(bytes, c)
+	return json.Unmarshal(b, dest)
 }
 
-// Value tells the SQL driver how to write the slice to the database as JSONB.
-func (c A11yComponents) Value() (driver.Value, error) {
-	if c == nil {
-		return json.Marshal(make(A11yComponents, 0))
-	}
-	return json.Marshal(c)
+func marshalJSONB(v any) (driver.Value, error) {
+	return json.Marshal(v)
 }

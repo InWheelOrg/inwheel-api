@@ -257,9 +257,6 @@ func (s *Server) CreatePlace(ctx context.Context, request apiv1.CreatePlaceReque
 		}
 		place.Accessibility.SubmittedAt = &now
 		s.engine.WithAuditFlags(place.Accessibility)
-		if conflicts := s.engine.DetectConflicts(place.Accessibility); len(conflicts) > 0 {
-			return apiv1.CreatePlace422JSONResponse(conflictError(conflicts)), nil
-		}
 	}
 
 	if err := s.db.Create(&place).Error; err != nil {
@@ -303,9 +300,6 @@ func (s *Server) PatchPlaceAccessibility(ctx context.Context, request apiv1.Patc
 	keyID := middleware.APIKeyIDFromCtx(ctx)
 
 	s.engine.WithAuditFlags(&input)
-	if conflicts := s.engine.DetectConflicts(&input); len(conflicts) > 0 {
-		return apiv1.PatchPlaceAccessibility422JSONResponse(conflictError(conflicts)), nil
-	}
 
 	now := time.Now()
 	if keyID != "" {
@@ -359,14 +353,6 @@ func validationError(errs []validation.FieldError) apiv1.ValidationError {
 		fields[i] = apiv1.FieldError{Field: e.Field, Reason: e.Reason}
 	}
 	return apiv1.ValidationError{Error: "validation failed", Fields: fields}
-}
-
-func conflictError(conflicts []a11y.Conflict) apiv1.ConflictError {
-	items := make([]apiv1.ConflictItem, len(conflicts))
-	for i, c := range conflicts {
-		items[i] = apiv1.ConflictItem{Component: string(c.Component), Reason: c.Reason}
-	}
-	return apiv1.ConflictError{Error: "accessibility data contains conflicts", Conflicts: items}
 }
 
 func writeJSON(w http.ResponseWriter, data any, code int) {

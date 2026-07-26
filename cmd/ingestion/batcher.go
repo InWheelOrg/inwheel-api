@@ -7,7 +7,6 @@ package main
 
 import (
 	"context"
-	"fmt"
 
 	"github.com/InWheelOrg/inwheel-api/pkg/models"
 )
@@ -15,17 +14,15 @@ import (
 // batcher buffers (place, profile) pairs, writes places first via flush, then
 // writes profiles using the UUIDs returned by flush. Single-goroutine.
 type batcher struct {
-	size             int
-	flush            func(context.Context, []models.Place) error
-	writeProfile     func(context.Context, string, *models.AccessibilityProfile) (bool, error)
-	downgradeProfile func(*models.AccessibilityProfile) int
+	size         int
+	flush        func(context.Context, []models.Place) error
+	writeProfile func(context.Context, string, *models.AccessibilityProfile) (bool, error)
 
-	buffer             []models.Place
-	pendingProfiles    []*models.AccessibilityProfile
-	written            int
-	touchedIDs         []string
-	profilesWritten    int
-	profilesDowngraded int
+	buffer          []models.Place
+	pendingProfiles []*models.AccessibilityProfile
+	written         int
+	touchedIDs      []string
+	profilesWritten int
 }
 
 func (b *batcher) sink(ctx context.Context, p models.Place, profile *models.AccessibilityProfile) error {
@@ -41,9 +38,6 @@ func (b *batcher) flushNow(ctx context.Context) error {
 	if len(b.buffer) == 0 {
 		return nil
 	}
-	if b.writeProfile != nil && b.downgradeProfile == nil {
-		return fmt.Errorf("batcher: writeProfile set without downgradeProfile")
-	}
 	if err := b.flush(ctx, b.buffer); err != nil {
 		return err
 	}
@@ -56,9 +50,6 @@ func (b *batcher) flushNow(ctx context.Context) error {
 		profile := b.pendingProfiles[i]
 		if profile == nil || b.writeProfile == nil {
 			continue
-		}
-		if b.downgradeProfile != nil {
-			b.profilesDowngraded += b.downgradeProfile(profile)
 		}
 		ok, err := b.writeProfile(ctx, p.ID, profile)
 		if err != nil {

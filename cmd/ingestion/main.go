@@ -92,7 +92,6 @@ func run(ctx context.Context, sourceName, command string, cfg config) error {
 	return runPipeline(ctx, src, command, gormDB)
 }
 
-// runPipeline routes src to its pipeline based on Kind.
 func runPipeline(ctx context.Context, src sources.Source, command string, gormDB *gorm.DB) error {
 	switch src.Kind() {
 	case sources.SourceKindCanonical:
@@ -104,8 +103,6 @@ func runPipeline(ctx context.Context, src sources.Source, command string, gormDB
 	}
 }
 
-// runCanonical drives a canonical source through the batched upsert path,
-// then runs the retry sweep against the IDs of places the batcher touched.
 func runCanonical(ctx context.Context, src sources.Source, command string, gormDB *gorm.DB) error {
 	placesRepo := place.NewRepository(gormDB)
 	unmatchedRepo := unmatched.NewRepository(gormDB)
@@ -115,10 +112,8 @@ func runCanonical(ctx context.Context, src sources.Source, command string, gormD
 		size:  batchSize,
 		flush: placesRepo.UpsertBatch,
 		writeProfile: func(ctx context.Context, placeID string, p *models.AccessibilityProfile) (bool, error) {
+			engine.WithAuditFlags(p)
 			return placesRepo.UpsertProfileIngestion(ctx, placeID, p)
-		},
-		downgradeProfile: func(p *models.AccessibilityProfile) int {
-			return resolveIngestionConflicts(engine, p)
 		},
 	}
 	if err := dispatchCanonical(ctx, src, command, b.sink); err != nil {
@@ -148,7 +143,6 @@ func runCanonical(ctx context.Context, src sources.Source, command string, gormD
 		"command", command,
 		"written", b.written,
 		"profiles_written", b.profilesWritten,
-		"profiles_downgraded", b.profilesDowngraded,
 		"sweep_failed", sweepErr != nil,
 	}
 	if sweepErr == nil {
@@ -164,8 +158,6 @@ func runCanonical(ctx context.Context, src sources.Source, command string, gormD
 	return nil
 }
 
-// runExternal drives an external source through identity.Resolver, attaching
-// matched external refs and queueing the rest.
 func runExternal(ctx context.Context, src sources.Source, command string, gormDB *gorm.DB) error {
 	placesRepo := place.NewRepository(gormDB)
 	unmatchedRepo := unmatched.NewRepository(gormDB)
@@ -229,34 +221,6 @@ func dispatchExternal(ctx context.Context, src sources.Source, command string, s
 	}
 }
 
-// resolveIngestionConflicts applies audit flags and demotes conflicting components
-// from accessible to limited.
-func resolveIngestionConflicts(engine *a11y.Engine, profile *models.AccessibilityProfile) int {
-	if profile == nil {
-		return 0
-	}
-	engine.WithAuditFlags(profile)
-	conflicts := engine.DetectConflicts(profile)
-	if len(conflicts) == 0 {
-		return 0
-	}
-	conflicted := make(map[models.A11yComponentType]bool, len(conflicts))
-	for _, c := range conflicts {
-		conflicted[c.Component] = true
-	}
-	downgraded := 0
-	for i := range profile.Components {
-		c := &profile.Components[i]
-		if conflicted[c.Type] && c.OverallStatus == models.StatusAccessible {
-			c.OverallStatus = models.StatusLimited
-			downgraded++
-			slog.Info("ingestion downgraded component", "component", c.Type, "flags", c.AuditFlags)
-		}
-	}
-	return downgraded
-}
-
-// resolveCounters tallies external-source outcomes for the run summary.
 type resolveCounters struct {
 	confident     int
 	lowConfidence int
