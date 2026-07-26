@@ -15,20 +15,23 @@ Domain types shared across the `cmd/api` and `cmd/ingestion` binaries. This pack
 ```mermaid
 erDiagram
     Place ||--o| AccessibilityProfile : "has"
-    AccessibilityProfile ||--o{ A11yComponent : "components[]"
-    A11yComponent ||--o| EntranceProperties : "entrance"
-    A11yComponent ||--o| RestroomProperties : "restroom"
-    A11yComponent ||--o| ParkingProperties : "parking"
-    A11yComponent ||--o| ElevatorProperties : "elevator"
+    AccessibilityProfile ||--o| EntranceProps : "entrance"
+    AccessibilityProfile ||--o| PathwayProps : "pathways"
+    AccessibilityProfile ||--o| RestroomProps : "restroom"
+    AccessibilityProfile ||--o| ParkingProps : "parking"
+    AccessibilityProfile ||--o| ElevatorProps : "elevator"
+    AccessibilityProfile ||--o{ SourceReport : "source_reports[]"
 ```
 
-`AccessibilityProfile` carries a top-level `OverallStatus` (client-submitted) and an array of typed `A11yComponent` entries. Each component has its own `OverallStatus`, a type discriminator (`entrance`, `restroom`, `parking`, `elevator`, `other`), and a typed properties pointer for that discriminator. Only the matching properties pointer is populated per component — the others are omitted from JSON.
+`AccessibilityProfile` has one named, independently-optional field per component type — `Entrance`, `Pathways`, `Restroom`, `Parking`, `Elevator` — rather than an array of generically-typed components. Each is a pointer; a `nil` component means no data was submitted for it, not "unknown/inaccessible." There is no top-level or per-component status field — component structs hold typed facts directly (e.g. `EntranceProps.Width`, `RestroomProps.HasGrabRails`).
 
-`AuditFlags` on each component are string facts computed by `internal/a11y` on every write. They describe physical properties of the component (e.g. `"narrow width (0.8m required)"`, `"step with no ramp"`). They are stored as facts and surfaced to clients as-is. The API never uses them to decide a place's accessibility status — that is left to client logic applied against the user's profile.
+`SourceReports` is a separate array of `SourceReport{Source, Value, RecordedAt}` — raw opinions from external sources (e.g. OSM's `wheelchair=yes` tag) stored verbatim, uninterpreted. Clients decide how much to trust each source.
+
+`AuditFlags` on each component are string facts computed by `internal/a11y` on every write (e.g. `"narrow width (0.8m required)"`). They describe physical properties of that component and are surfaced to clients as-is. The API never uses them to decide a place's accessibility status, and no write is ever rejected because of them — that judgment is left to client logic applied against the user's profile.
 
 `IsInherited` and `SourceID` on a component are set at read time by `internal/a11y.ComputeEffectiveProfile` when the component originates from a parent place. They are not persisted.
 
-`UserVerified` on `AccessibilityProfile` signals that the data was submitted by a human via the API. The ingestion pipeline will not overwrite a profile where this flag is true.
+`UserVerified` on `AccessibilityProfile` is intended to signal that the data was submitted by a human via the API, and gates the ingestion pipeline (`UpsertProfileIngestion` skips a profile entirely when this is `true`, preserving human corrections). The OpenAPI spec marks it `readOnly` (server-controlled, not client-writable), and no handler in `cmd/api` ever assigns it — so in practice every profile is `false` today.
 
 ## External references
 
@@ -49,7 +52,7 @@ Example stored value:
 
 ## JSONB custom types
 
-`Geometry`, `PlaceTags`, `A11yComponents`, and `ExternalIDs` all implement `driver.Valuer` / `sql.Scanner`. GORM maps them to `type:jsonb` columns. The scanner always initialises a non-nil value on read so callers don't need to nil-check the container before ranging.
+`Geometry`, `PlaceTags`, `ExternalIDs`, `SourceReports`, and each component props type (`EntranceProps`, `PathwayProps`, `RestroomProps`, `ParkingProps`, `ElevatorProps`) implement `driver.Valuer` / `sql.Scanner`. GORM maps them to `type:jsonb` columns.
 
 ## APIKey
 

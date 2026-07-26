@@ -38,8 +38,8 @@ sequenceDiagram
     OV->>SH: validated request object
     SH->>V: structural checks
     V-->>SH: FieldErrors or nil
-    SH->>AE: WithAuditFlags + DetectConflicts
-    AE-->>SH: conflicts or nil
+    SH->>AE: WithAuditFlags
+    AE-->>SH: profile with flags
     SH->>DB: read / write
     DB-->>SH: result
     SH-->>C: JSON response + audit log
@@ -58,13 +58,13 @@ The key ID is injected into the request context after successful auth so downstr
 
 ## Validation layers
 
-Two distinct layers handle different classes of invalid input:
+Two distinct layers handle different classes of invalid input; a third step computes facts but never rejects:
 
 1. **OpenAPI middleware** (kin-openapi / nethttp-middleware) — catches spec-level errors: missing required fields, wrong types, enum violations, UUID format. Runs at the edge before handlers.
 2. **`internal/validation`** — catches constraints the spec cannot express: whitespace-only names, mutually exclusive query-param groups (proximity vs bounding box), cursor decode failures, tag/metadata size limits. Runs inside the handler, after the spec validator.
-3. **`internal/a11y`** — catches business rule violations: a component is marked `accessible` but the submitted properties directly contradict that claim. Returns HTTP 422 with a list of conflicts.
+3. **`internal/a11y`** — computes `audit_flags` per component from the submitted property values (e.g. narrow entrance width, missing grab rails). Purely informational: no write is ever rejected on accessibility grounds.
 
-All three layers produce the same JSON error shape — `{error, fields[]}` for 400, `{error, conflicts[]}` for 422 — via a shared `validationErrorHandler`.
+Both validation layers produce the same JSON error shape — `{error, fields[]}` — via a shared `validationErrorHandler`. The a11y engine never returns an error; it only annotates the persisted record.
 
 ## Other details
 

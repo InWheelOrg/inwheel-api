@@ -43,18 +43,16 @@ The natural key for upserts is `(osm_id, osm_type)`, where `osm_type` is `node`,
 
 | Tag | Maps to |
 |---|---|
-| `wheelchair=yes\|designated` | profile `OverallStatus=accessible` |
-| `wheelchair=limited` | profile `OverallStatus=limited` |
-| `wheelchair=no` | profile `OverallStatus=inaccessible` |
-| (no `wheelchair=*`, components present) | profile `OverallStatus=unknown` |
-| `toilets:wheelchair=yes\|no` | restroom component |
-| `capacity:disabled=N` | parking component, count preserved |
-| `automatic_door` ≠ `no` | entrance component, `is_automatic=true` |
-| `step_count` or `entrance:step_count` ≥ 1 | entrance component, `has_step=true` |
-| `ramp:wheelchair=yes\|no` | entrance component, `has_ramp` (takes precedence over generic `ramp`) |
-| `elevator=yes` | elevator component, status `accessible` |
+| `wheelchair=yes\|designated\|limited\|no` | a `SourceReport{Source: "osm", Value: <raw tag value>}` — stored verbatim, not interpreted as a status |
+| `toilets:wheelchair=yes\|no` | `RestroomProps.IsAccessible` |
+| `capacity:disabled=N` | `ParkingProps.HasDisabledSpaces` (`N > 0`) + `Count` |
+| `parking:disabled=no` | `ParkingProps.HasDisabledSpaces=false` |
+| `automatic_door` not empty and ≠ `no` | `EntranceProps.Door.Type=automatic` |
+| `step_count` or `entrance:step_count` ≥ 1 | `EntranceProps.IsLevel=false` |
+| `ramp:wheelchair=yes\|no` | `EntranceProps.HasFixedRamp` (takes precedence over generic `ramp=no`) |
+| `elevator=yes` | `ElevatorProps{}` (presence only; no dimensions from OSM) |
 
-When a profile has a hard conflict (e.g. `step_count=1` + `ramp:wheelchair=no` with `overall_status=accessible`), the ingestion pipeline demotes the conflicting component to `limited`. The API write path rejects the same input with HTTP 422.
+There is no conflict detection anywhere in this mapping or downstream. The `wheelchair` tag is never interpreted into a computed status — it is recorded as a raw opinion in `SourceReports` and left for clients to weigh alongside the typed component facts.
 
 ## Rank derivation
 
