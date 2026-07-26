@@ -11,7 +11,6 @@
 package validation
 
 import (
-	"encoding/json"
 	"fmt"
 	"regexp"
 	"strings"
@@ -32,8 +31,6 @@ const (
 	maxTagEntries      = 50
 	maxTagKeyLength    = 64
 	maxTagValueLength  = 256
-	maxMetadataEntries = 50
-	maxMetadataBytes   = 4 * 1024
 	maxParkingCount    = 10000
 )
 
@@ -61,12 +58,6 @@ func Place(p *models.Place) []FieldError {
 	}
 
 	errs = append(errs, validateTags(p.Tags)...)
-
-	if p.Accessibility != nil {
-		for _, comp := range p.Accessibility.Components {
-			errs = append(errs, validateMetadata(comp.Metadata)...)
-		}
-	}
 
 	return errs
 }
@@ -136,23 +127,6 @@ func validateTags(tags models.PlaceTags) []FieldError {
 		}
 	}
 	return errs
-}
-
-func validateMetadata(md map[string]any) []FieldError {
-	if len(md) > maxMetadataEntries {
-		return []FieldError{{Field: "metadata", Reason: fmt.Sprintf("must contain ≤ %d entries", maxMetadataEntries)}}
-	}
-	if len(md) == 0 {
-		return nil
-	}
-	b, err := json.Marshal(md)
-	if err != nil {
-		return []FieldError{{Field: "metadata", Reason: "must be JSON-serialisable"}}
-	}
-	if len(b) > maxMetadataBytes {
-		return []FieldError{{Field: "metadata", Reason: fmt.Sprintf("serialised size exceeds %d bytes", maxMetadataBytes)}}
-	}
-	return nil
 }
 
 func countNonNilFloats(ptrs ...*float64) int {

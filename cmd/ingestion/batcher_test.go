@@ -161,13 +161,12 @@ func TestBatcher_WritesProfileWhenAttached(t *testing.T) {
 			captured = append(captured, capturedProfile{placeID: placeID, profile: p})
 			return true, nil
 		},
-		downgradeProfile: func(_ *models.AccessibilityProfile) int { return 0 },
 	}
 
 	if err := b.sink(ctx, models.Place{Name: "no-a11y"}, nil); err != nil {
 		t.Fatalf("sink p1: %v", err)
 	}
-	profile := &models.AccessibilityProfile{OverallStatus: models.StatusAccessible}
+	profile := &models.AccessibilityProfile{}
 	if err := b.sink(ctx, models.Place{Name: "with-a11y"}, profile); err != nil {
 		t.Fatalf("sink p2: %v", err)
 	}
@@ -182,33 +181,6 @@ func TestBatcher_WritesProfileWhenAttached(t *testing.T) {
 	}
 	if b.profilesWritten != 1 {
 		t.Errorf("profilesWritten = %d, want 1", b.profilesWritten)
-	}
-}
-
-func TestBatcher_DowngradeCounter(t *testing.T) {
-	ctx := context.Background()
-	b := &batcher{
-		size: 10,
-		flush: func(_ context.Context, ps []models.Place) error {
-			for i := range ps {
-				ps[i].ID = fmt.Sprintf("place-%d", i)
-			}
-			return nil
-		},
-		writeProfile: func(_ context.Context, _ string, _ *models.AccessibilityProfile) (bool, error) {
-			return true, nil
-		},
-		downgradeProfile: func(_ *models.AccessibilityProfile) int { return 2 },
-	}
-	profile := &models.AccessibilityProfile{OverallStatus: models.StatusAccessible}
-	if err := b.sink(ctx, models.Place{Name: "p"}, profile); err != nil {
-		t.Fatalf("sink: %v", err)
-	}
-	if err := b.flushNow(ctx); err != nil {
-		t.Fatalf("flushNow: %v", err)
-	}
-	if b.profilesDowngraded != 2 {
-		t.Errorf("profilesDowngraded = %d, want 2", b.profilesDowngraded)
 	}
 }
 
@@ -228,9 +200,8 @@ func TestBatcher_PlaceHasNoAccessibilityFieldInFlush(t *testing.T) {
 		writeProfile: func(_ context.Context, _ string, _ *models.AccessibilityProfile) (bool, error) {
 			return true, nil
 		},
-		downgradeProfile: func(_ *models.AccessibilityProfile) int { return 0 },
 	}
-	profile := &models.AccessibilityProfile{OverallStatus: models.StatusAccessible}
+	profile := &models.AccessibilityProfile{}
 	if err := b.sink(ctx, models.Place{Name: "with-a11y"}, profile); err != nil {
 		t.Fatalf("sink: %v", err)
 	}
@@ -242,30 +213,6 @@ func TestBatcher_PlaceHasNoAccessibilityFieldInFlush(t *testing.T) {
 	}
 	if batchSeen[0].Accessibility != nil {
 		t.Errorf("place.Accessibility must be nil in flush batch, got %+v", batchSeen[0].Accessibility)
-	}
-}
-
-func TestBatcher_FlushNow_ErrorWhenWriteProfileWithoutDowngrade(t *testing.T) {
-	ctx := context.Background()
-	b := &batcher{
-		size: 10,
-		flush: func(_ context.Context, ps []models.Place) error {
-			for i := range ps {
-				ps[i].ID = fmt.Sprintf("place-%d", i)
-			}
-			return nil
-		},
-		writeProfile: func(_ context.Context, _ string, _ *models.AccessibilityProfile) (bool, error) {
-			return true, nil
-		},
-	}
-	profile := &models.AccessibilityProfile{OverallStatus: models.StatusAccessible}
-	if err := b.sink(ctx, models.Place{Name: "p"}, profile); err != nil {
-		t.Fatalf("sink: %v", err)
-	}
-	err := b.flushNow(ctx)
-	if err == nil {
-		t.Fatal("expected error, got nil")
 	}
 }
 

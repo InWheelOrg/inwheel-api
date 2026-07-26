@@ -54,11 +54,17 @@ For a deeper tour, start at the per-package READMEs linked in the [Repository la
 
 **`Place`**: a physical location with coordinates, category, OSM metadata, and an optional parent (e.g. a shop inside a mall). External references (Wheelmap, future sources) attach as an `external_ids` JSONB map. See [`pkg/models`](./pkg/models).
 
-**`AccessibilityProfile`**: attached to a place. Contains:
-- `overall_status`: `accessible` | `limited` | `inaccessible` | `unknown`
-- `components`: array of typed features (`entrance`, `restroom`, `parking`, `elevator`, `other`)
+**`AccessibilityProfile`**: attached to a place. Named component fields hold measured facts:
 
-Each component carries its own `overall_status`, raw property values (widths, heights, booleans), and machine-computed `audit_flags` (e.g. `"narrow width (0.8m required)"`). Child places inherit parent components for any type they don't provide themselves, so a shop inside a mall inherits the mall's parking. See [`internal/a11y`](./internal/a11y).
+| Field | What it captures |
+|---|---|
+| `entrance` | Level access, ramp, door width, door type, intercom |
+| `pathways` | Width, surface, kerb-free, steps |
+| `restroom` | Accessible toilet, grab rails, door width, turning radius |
+| `parking` | Disabled spaces, count, distance to entrance |
+| `elevator` | Cabin dimensions, braille, audio |
+
+Each component carries typed property values and machine-computed `audit_flags` written on every save (e.g. `"entrance_narrow_width"`). `source_reports` stores raw opinions from external sources (e.g. OSM `wheelchair=yes`) verbatim — no server-side judgment is applied. Child places inherit parent components for any slot they don't provide themselves, so a shop inside a mall inherits the mall's parking. See [`internal/a11y`](./internal/a11y).
 
 **`ExternalRef`**: confidence-scored attachment of an external source's ID (Wheelmap etc.) to a Place. Produced by the [identity matcher](./internal/identity).
 
@@ -92,15 +98,13 @@ flowchart LR
   Schema -- no --> R400[400 validation failed]
   Schema -- yes --> Struct{Structural<br/>internal/validation}
   Struct -- errors --> R400
-  Struct -- ok --> Engine[a11y engine]
-  Engine --> Conflicts{Hard conflicts?}
-  Conflicts -- yes --> R422[422 conflicts]
-  Conflicts -- no --> Persist[(persist + audit log)]
+  Struct -- ok --> Engine[a11y engine<br/>computes audit flags]
+  Engine --> Persist[(persist + audit log)]
 ```
 
 - **Spec validation** at the middleware layer catches type, format, and required-field errors from the OpenAPI spec.
 - **Structural validation** ([`internal/validation`](./internal/validation)) catches multi-field business validity: mutually exclusive query params, range checks, UUID format.
-- **The a11y engine** ([`internal/a11y`](./internal/a11y)) computes audit flags from component properties, then detects *hard* conflicts. Submitting `overall_status: accessible` while also submitting `has_step: true, has_ramp: false` returns 422. Threshold flags (narrow width, missing braille) are stored but never block.
+- **The a11y engine** ([`internal/a11y`](./internal/a11y)) computes `audit_flags` from component property values and writes them alongside the record. Flags are informational — no write is ever rejected on accessibility grounds.
 
 The API never decides accessibility. It records facts.
 
@@ -149,7 +153,7 @@ See [`cmd/ingestion`](./cmd/ingestion) for the full pipeline diagrams.
 | [`cmd/api/`](./cmd/api) | REST API binary: routing, auth, OpenAPI strict server wiring |
 | [`cmd/ingestion/`](./cmd/ingestion) | Batch ingestion CLI: canonical and external pipelines, batcher, sweep wiring |
 | [`pkg/models/`](./pkg/models) | Domain types shared across binaries |
-| [`internal/a11y/`](./internal/a11y) | Accessibility rule engine: audit flag computation, conflict detection, parent inheritance |
+| [`internal/a11y/`](./internal/a11y) | Accessibility rule engine: audit flag computation, parent component inheritance |
 | [`internal/api/v1/`](./internal/api/v1) | Code-generated OpenAPI types and strict server interface (do not edit by hand) |
 | `internal/audit/` | Append-only write log of "who created/modified what" |
 | [`internal/db/`](./internal/db) | GORM connection, migration runner, PostGIS index setup |

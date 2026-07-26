@@ -12,6 +12,7 @@ import (
 	"fmt"
 	"math"
 	"testing"
+	"time"
 
 	"github.com/InWheelOrg/inwheel-api/internal/place"
 	"github.com/InWheelOrg/inwheel-api/internal/sources"
@@ -27,7 +28,7 @@ const fixturePBFPath = "../../testdata/andorra-sample.osm.pbf"
 const expectedPOICount = 976
 
 // pinned is a known POI from the Andorra fixture used to verify that the
-// transform → upsert pipeline produces the expected place row.
+// transform -> upsert pipeline produces the expected place row.
 type pinned struct {
 	osmID     int64
 	name      string
@@ -71,7 +72,7 @@ var pinnedPOIs = []pinned{
 		osmID:    323129883,
 		name:     "Telecabina La Massana",
 		category: models.CategoryTransport,
-		rank:     models.RankLandmark, // public_transport=station promotes transport to landmark
+		rank:     models.RankLandmark,
 		lat:      42.547295,
 		lng:      1.513858,
 		tagSubset: map[string]string{
@@ -184,8 +185,6 @@ func TestRunCanonical_WritesAccessibilityProfiles(t *testing.T) {
 	}
 	defer cleanup()
 
-	hasStep := true
-	hasRamp := false
 	src := &fakeCanonicalSource{
 		emit: []fakeEmit{
 			{
@@ -199,29 +198,14 @@ func TestRunCanonical_WritesAccessibilityProfiles(t *testing.T) {
 			},
 			{
 				place: models.Place{
-					OSMID: 1002, OSMType: models.OSMNode, Name: "Accessible",
+					OSMID: 1002, OSMType: models.OSMNode, Name: "With Source Report",
 					Lat: 46.4621, Lng: 6.8401, Category: models.CategoryCafe,
 					Rank:        models.RankEstablishment,
 					Status:      models.PlaceStatusActive,
 					ExternalIDs: models.ExternalIDs{"osm": {ID: "node/1002", Confidence: 1.0}},
 				},
-				profile: &models.AccessibilityProfile{OverallStatus: models.StatusAccessible},
-			},
-			{
-				place: models.Place{
-					OSMID: 1003, OSMType: models.OSMNode, Name: "Hard Conflict",
-					Lat: 46.4622, Lng: 6.8402, Category: models.CategoryCafe,
-					Rank:        models.RankEstablishment,
-					Status:      models.PlaceStatusActive,
-					ExternalIDs: models.ExternalIDs{"osm": {ID: "node/1003", Confidence: 1.0}},
-				},
 				profile: &models.AccessibilityProfile{
-					OverallStatus: models.StatusAccessible,
-					Components: models.A11yComponents{{
-						Type:          models.ComponentEntrance,
-						OverallStatus: models.StatusAccessible,
-						Entrance:      &models.EntranceProperties{HasStep: &hasStep, HasRamp: &hasRamp},
-					}},
+					SourceReports: models.SourceReports{{Source: "osm", Value: "yes", RecordedAt: time.Now()}},
 				},
 			},
 		},
@@ -235,21 +219,11 @@ func TestRunCanonical_WritesAccessibilityProfiles(t *testing.T) {
 	if err := db.Find(&profiles).Error; err != nil {
 		t.Fatalf("read profiles: %v", err)
 	}
-	if len(profiles) != 2 {
-		t.Fatalf("expected 2 profiles (Plain has none), got %d", len(profiles))
+	if len(profiles) != 1 {
+		t.Fatalf("expected 1 profile (Plain has none), got %d", len(profiles))
 	}
-
-	var conflictProfile models.AccessibilityProfile
-	if err := db.Joins("JOIN places ON places.id = accessibility_profiles.place_id").
-		Where("places.osm_id = ?", 1003).
-		First(&conflictProfile).Error; err != nil {
-		t.Fatalf("read conflict profile: %v", err)
-	}
-	if len(conflictProfile.Components) != 1 {
-		t.Fatalf("conflict profile components = %d, want 1", len(conflictProfile.Components))
-	}
-	if conflictProfile.Components[0].OverallStatus != models.StatusLimited {
-		t.Errorf("component status = %q, want limited (downgraded from accessible)", conflictProfile.Components[0].OverallStatus)
+	if len(profiles[0].SourceReports) == 0 || profiles[0].SourceReports[0].Value != "yes" {
+		t.Errorf("expected source report value 'yes', got %v", profiles[0].SourceReports)
 	}
 }
 
@@ -261,6 +235,7 @@ func TestRunCanonical_DoesNotOverwriteUserVerified(t *testing.T) {
 	}
 	defer cleanup()
 
+	isLevel := false
 	repo := place.NewRepository(db)
 	seed := models.Place{
 		OSMID: 2001, OSMType: models.OSMNode, Name: "Verified",
@@ -273,8 +248,8 @@ func TestRunCanonical_DoesNotOverwriteUserVerified(t *testing.T) {
 		t.Fatalf("seed place: %v", err)
 	}
 	_, err = repo.UpsertProfile(ctx, seed.ID, &models.AccessibilityProfile{
-		OverallStatus: models.StatusInaccessible,
-		UserVerified:  true,
+		Entrance:     &models.EntranceProps{IsLevel: &isLevel},
+		UserVerified: true,
 	})
 	if err != nil {
 		t.Fatalf("seed profile: %v", err)
@@ -289,7 +264,9 @@ func TestRunCanonical_DoesNotOverwriteUserVerified(t *testing.T) {
 				Status:      models.PlaceStatusActive,
 				ExternalIDs: models.ExternalIDs{"osm": {ID: "node/2001", Confidence: 1.0}},
 			},
-			profile: &models.AccessibilityProfile{OverallStatus: models.StatusAccessible},
+			profile: &models.AccessibilityProfile{
+				SourceReports: models.SourceReports{{Source: "osm", Value: "yes", RecordedAt: time.Now()}},
+			},
 		}},
 	}
 	if err := runCanonical(ctx, src, "full-import", db); err != nil {
@@ -300,11 +277,11 @@ func TestRunCanonical_DoesNotOverwriteUserVerified(t *testing.T) {
 	if err := db.Where("place_id = ?", seed.ID).First(&stored).Error; err != nil {
 		t.Fatalf("read: %v", err)
 	}
-	if stored.OverallStatus != models.StatusInaccessible {
-		t.Errorf("user-verified profile got overwritten: status = %q, want inaccessible", stored.OverallStatus)
+	if stored.Entrance == nil || stored.Entrance.IsLevel == nil || *stored.Entrance.IsLevel {
+		t.Error("user-verified profile got overwritten: Entrance.IsLevel should still be false")
 	}
 	if !stored.UserVerified {
-		t.Errorf("user_verified flag was cleared")
+		t.Error("user_verified flag was cleared")
 	}
 }
 

@@ -18,572 +18,264 @@ func floatPtr(v float64) *float64 { return &v }
 func TestComputeEffectiveProfile(t *testing.T) {
 	engine := &Engine{}
 
-	tests := []struct {
-		name          string
-		child         *models.Place
-		parent        *models.Place
-		wantStatus    models.A11yStatus
-		wantCompCount int
-		check         func(t *testing.T, res *models.AccessibilityProfile, parent *models.Place)
-	}{
-		{
-			name:       "nil child returns nil",
-			child:      nil,
-			parent:     nil,
-			wantStatus: "", // nil expected
-		},
-		{
-			name:          "child without accessibility and no parent",
-			child:         &models.Place{ID: "child-1"},
-			parent:        nil,
-			wantStatus:    models.StatusUnknown,
-			wantCompCount: 0,
-		},
-		{
-			name: "child inherits from parent",
-			parent: &models.Place{
-				ID: "parent-1",
-				Accessibility: &models.AccessibilityProfile{
-					OverallStatus: models.StatusAccessible,
-					Components: []models.A11yComponent{
-						{
-							Type:          models.ComponentParking,
-							OverallStatus: models.StatusAccessible,
-						},
-					},
-				},
-			},
-			child: &models.Place{
-				ID: "child-1",
-				Accessibility: &models.AccessibilityProfile{
-					OverallStatus: models.StatusLimited,
-					Components: []models.A11yComponent{
-						{
-							Type:          models.ComponentEntrance,
-							OverallStatus: models.StatusLimited,
-						},
-					},
-				},
-			},
-			wantStatus:    models.StatusLimited,
-			wantCompCount: 2,
-			check: func(t *testing.T, res *models.AccessibilityProfile, parent *models.Place) {
-				// Check for child's own component
-				var entranceFound bool
-				for _, c := range res.Components {
-					if c.Type == models.ComponentEntrance {
-						entranceFound = true
-						if c.IsInherited {
-							t.Error("Child entrance component should not be marked as inherited")
-						}
-					}
-				}
-				if !entranceFound {
-					t.Error("Child entrance component missing from effective profile")
-				}
+	t.Run("nil child returns nil", func(t *testing.T) {
+		if engine.ComputeEffectiveProfile(nil, nil) != nil {
+			t.Error("expected nil for nil child")
+		}
+	})
 
-				// Check for inherited parent component
-				var parkingFound bool
-				for _, c := range res.Components {
-					if c.Type == models.ComponentParking {
-						parkingFound = true
-						if !c.IsInherited {
-							t.Error("Parent parking component should be marked as inherited")
-						}
-						if c.SourceID != parent.ID {
-							t.Errorf("Expected SourceID %s, got %s", parent.ID, c.SourceID)
-						}
-					}
-				}
-				if !parkingFound {
-					t.Error("Parent parking component missing from effective profile")
-				}
-			},
-		},
-		{
-			name: "child component overrides parent component",
-			parent: &models.Place{
-				ID: "parent-1",
-				Accessibility: &models.AccessibilityProfile{
-					Components: []models.A11yComponent{
-						{
-							Type:          models.ComponentEntrance,
-							OverallStatus: models.StatusAccessible,
-						},
-					},
-				},
-			},
-			child: &models.Place{
-				ID: "child-1",
-				Accessibility: &models.AccessibilityProfile{
-					OverallStatus: models.StatusUnknown,
-					Components: []models.A11yComponent{
-						{
-							Type:          models.ComponentEntrance,
-							OverallStatus: models.StatusInaccessible,
-						},
-					},
-				},
-			},
-			wantStatus:    models.StatusUnknown,
-			wantCompCount: 1,
-			check: func(t *testing.T, res *models.AccessibilityProfile, _ *models.Place) {
-				if res.Components[0].OverallStatus != models.StatusInaccessible {
-					t.Errorf("Expected child status %s to override parent, got %s", models.StatusInaccessible, res.Components[0].OverallStatus)
-				}
-				if res.Components[0].IsInherited {
-					t.Error("Child component should not be marked as inherited")
-				}
-			},
-		},
-	}
+	t.Run("child with no accessibility and no parent", func(t *testing.T) {
+		res := engine.ComputeEffectiveProfile(&models.Place{ID: "c"}, nil)
+		if res == nil {
+			t.Fatal("expected non-nil profile")
+		}
+		if res.Entrance != nil || res.Parking != nil || res.Restroom != nil {
+			t.Error("expected all components nil for place with no accessibility")
+		}
+	})
 
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			res := engine.ComputeEffectiveProfile(tt.child, tt.parent)
+	t.Run("child inherits parent parking when child has none", func(t *testing.T) {
+		parent := &models.Place{
+			ID: "parent-1",
+			Accessibility: &models.AccessibilityProfile{
+				Parking: &models.ParkingProps{HasDisabledSpaces: boolPtr(true)},
+			},
+		}
+		child := &models.Place{
+			ID: "child-1",
+			Accessibility: &models.AccessibilityProfile{
+				Entrance: &models.EntranceProps{IsLevel: boolPtr(true)},
+			},
+		}
+		res := engine.ComputeEffectiveProfile(child, parent)
 
-			if tt.child == nil {
-				if res != nil {
-					t.Errorf("Expected nil for nil child, got %v", res)
-				}
-				return
-			}
+		if res.Entrance == nil || res.Entrance.IsInherited {
+			t.Error("child's own entrance should be present and not inherited")
+		}
+		if res.Parking == nil {
+			t.Fatal("parent parking should be inherited")
+		}
+		if !res.Parking.IsInherited {
+			t.Error("inherited parking should have IsInherited=true")
+		}
+		if res.Parking.SourceID != parent.ID {
+			t.Errorf("inherited parking SourceID = %q, want %q", res.Parking.SourceID, parent.ID)
+		}
+	})
 
-			if res == nil {
-				t.Fatal("Expected non-nil profile")
-			}
+	t.Run("child entrance overrides parent entrance", func(t *testing.T) {
+		parent := &models.Place{
+			ID: "parent-1",
+			Accessibility: &models.AccessibilityProfile{
+				Entrance: &models.EntranceProps{IsLevel: boolPtr(true)},
+			},
+		}
+		child := &models.Place{
+			ID: "child-1",
+			Accessibility: &models.AccessibilityProfile{
+				Entrance: &models.EntranceProps{IsLevel: boolPtr(false)},
+			},
+		}
+		res := engine.ComputeEffectiveProfile(child, parent)
 
-			if res.OverallStatus != tt.wantStatus {
-				t.Errorf("OverallStatus = %s, want %s", res.OverallStatus, tt.wantStatus)
-			}
+		if res.Entrance == nil {
+			t.Fatal("expected entrance")
+		}
+		if res.Entrance.IsInherited {
+			t.Error("child's own entrance should not be inherited")
+		}
+		if res.Entrance.IsLevel == nil || *res.Entrance.IsLevel {
+			t.Error("expected child's is_level=false to override parent's is_level=true")
+		}
+	})
 
-			if len(res.Components) != tt.wantCompCount {
-				t.Errorf("len(Components) = %d, want %d", len(res.Components), tt.wantCompCount)
-			}
+	t.Run("original child and parent records are not mutated", func(t *testing.T) {
+		parent := &models.Place{
+			ID: "p",
+			Accessibility: &models.AccessibilityProfile{
+				Parking: &models.ParkingProps{HasDisabledSpaces: boolPtr(true)},
+			},
+		}
+		child := &models.Place{ID: "c", Accessibility: &models.AccessibilityProfile{}}
 
-			if tt.check != nil {
-				tt.check(t, res, tt.parent)
-			}
-		})
-	}
-}
+		engine.ComputeEffectiveProfile(child, parent)
 
-func TestDetectConflicts(t *testing.T) {
-	engine := &Engine{}
-
-	tests := []struct {
-		name          string
-		components    []models.A11yComponent
-		wantConflicts int
-	}{
-		{
-			name:          "nil profile",
-			components:    nil,
-			wantConflicts: 0,
-		},
-		{
-			name: "no components",
-			components:    []models.A11yComponent{},
-			wantConflicts: 0,
-		},
-		// Hard contradictions — must block
-		{
-			name: "entrance: step with no ramp + accessible",
-			components: []models.A11yComponent{
-				{
-					Type:          models.ComponentEntrance,
-					OverallStatus: models.StatusAccessible,
-					AuditFlags:    []string{FlagEntranceStepNoRamp},
-				},
-			},
-			wantConflicts: 1,
-		},
-		{
-			name: "restroom: not wheelchair accessible + accessible",
-			components: []models.A11yComponent{
-				{
-					Type:          models.ComponentRestroom,
-					OverallStatus: models.StatusAccessible,
-					AuditFlags:    []string{FlagRestroomNotAccessible},
-				},
-			},
-			wantConflicts: 1,
-		},
-		{
-			name: "parking: no disabled spaces + accessible",
-			components: []models.A11yComponent{
-				{
-					Type:          models.ComponentParking,
-					OverallStatus: models.StatusAccessible,
-					AuditFlags:    []string{FlagParkingNoDisabledSpaces},
-				},
-			},
-			wantConflicts: 1,
-		},
-		// Informational threshold flags — must not block
-		{
-			name: "entrance: narrow width + accessible — informational only",
-			components: []models.A11yComponent{
-				{
-					Type:          models.ComponentEntrance,
-					OverallStatus: models.StatusAccessible,
-					AuditFlags:    []string{FlagEntranceNarrowWidth},
-				},
-			},
-			wantConflicts: 0,
-		},
-		{
-			name: "entrance: high step + accessible — informational only",
-			components: []models.A11yComponent{
-				{
-					Type:          models.ComponentEntrance,
-					OverallStatus: models.StatusAccessible,
-					AuditFlags:    []string{FlagEntranceHighStep},
-				},
-			},
-			wantConflicts: 0,
-		},
-		{
-			name: "restroom: narrow door + accessible — informational only",
-			components: []models.A11yComponent{
-				{
-					Type:          models.ComponentRestroom,
-					OverallStatus: models.StatusAccessible,
-					AuditFlags:    []string{FlagRestroomNarrowDoor},
-				},
-			},
-			wantConflicts: 0,
-		},
-		{
-			name: "elevator: narrow width + accessible — informational only",
-			components: []models.A11yComponent{
-				{
-					Type:          models.ComponentElevator,
-					OverallStatus: models.StatusAccessible,
-					AuditFlags:    []string{FlagElevatorNarrowWidth},
-				},
-			},
-			wantConflicts: 0,
-		},
-		// Status other than accessible — never a conflict
-		{
-			name: "step with no ramp + limited — no conflict",
-			components: []models.A11yComponent{
-				{
-					Type:          models.ComponentEntrance,
-					OverallStatus: models.StatusLimited,
-					AuditFlags:    []string{FlagEntranceStepNoRamp},
-				},
-			},
-			wantConflicts: 0,
-		},
-		{
-			name: "restroom not accessible + inaccessible — no conflict",
-			components: []models.A11yComponent{
-				{
-					Type:          models.ComponentRestroom,
-					OverallStatus: models.StatusInaccessible,
-					AuditFlags:    []string{FlagRestroomNotAccessible},
-				},
-			},
-			wantConflicts: 0,
-		},
-		// Multiple components — only conflicting ones reported
-		{
-			name: "two components, one conflict",
-			components: []models.A11yComponent{
-				{
-					Type:          models.ComponentEntrance,
-					OverallStatus: models.StatusAccessible,
-					AuditFlags:    []string{FlagEntranceNarrowWidth}, // informational only
-				},
-				{
-					Type:          models.ComponentRestroom,
-					OverallStatus: models.StatusAccessible,
-					AuditFlags:    []string{FlagRestroomNotAccessible}, // hard conflict
-				},
-			},
-			wantConflicts: 1,
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			var profile *models.AccessibilityProfile
-			if tt.components != nil {
-				profile = &models.AccessibilityProfile{Components: tt.components}
-			}
-			conflicts := engine.DetectConflicts(profile)
-			if len(conflicts) != tt.wantConflicts {
-				t.Errorf("DetectConflicts() = %d conflicts, want %d: %v", len(conflicts), tt.wantConflicts, conflicts)
-			}
-		})
-	}
+		if parent.Accessibility.Parking.IsInherited {
+			t.Error("parent parking should not be mutated")
+		}
+	})
 }
 
 func TestWithAuditFlags(t *testing.T) {
 	engine := &Engine{}
 
-	tests := []struct {
-		name      string
-		component models.A11yComponent
-		wantFlags []string
-	}{
-		// --- nil / empty ---
-		{
-			name:      "nil profile does not panic",
-			component: models.A11yComponent{}, // tested separately below via nil call
-		},
-
-		// --- entrance ---
-		{
-			name: "entrance: no properties set — no flags",
-			component: models.A11yComponent{
-				Type:     models.ComponentEntrance,
-				Entrance: &models.EntranceProperties{},
-			},
-			wantFlags: nil,
-		},
-		{
-			name: "entrance: width below minimum",
-			component: models.A11yComponent{
-				Type:     models.ComponentEntrance,
-				Entrance: &models.EntranceProperties{Width: floatPtr(0.75)},
-			},
-			wantFlags: []string{FlagEntranceNarrowWidth},
-		},
-		{
-			name: "entrance: width exactly at minimum — no flag",
-			component: models.A11yComponent{
-				Type:     models.ComponentEntrance,
-				Entrance: &models.EntranceProperties{Width: floatPtr(0.8)},
-			},
-			wantFlags: nil,
-		},
-		{
-			name: "entrance: has step",
-			component: models.A11yComponent{
-				Type:     models.ComponentEntrance,
-				Entrance: &models.EntranceProperties{HasStep: boolPtr(true)},
-			},
-			wantFlags: []string{FlagEntranceContainsStep},
-		},
-		{
-			name: "entrance: step height above threshold",
-			component: models.A11yComponent{
-				Type: models.ComponentEntrance,
-				Entrance: &models.EntranceProperties{
-					HasStep:    boolPtr(true),
-					StepHeight: floatPtr(0.1),
-				},
-			},
-			wantFlags: []string{FlagEntranceContainsStep, FlagEntranceHighStep},
-		},
-		{
-			name: "entrance: step height at threshold — no high-step flag",
-			component: models.A11yComponent{
-				Type: models.ComponentEntrance,
-				Entrance: &models.EntranceProperties{
-					HasStep:    boolPtr(true),
-					StepHeight: floatPtr(0.05),
-				},
-			},
-			wantFlags: []string{FlagEntranceContainsStep},
-		},
-		{
-			name: "entrance: step with no ramp",
-			component: models.A11yComponent{
-				Type: models.ComponentEntrance,
-				Entrance: &models.EntranceProperties{
-					HasStep: boolPtr(true),
-					HasRamp: boolPtr(false),
-				},
-			},
-			wantFlags: []string{FlagEntranceContainsStep, FlagEntranceStepNoRamp},
-		},
-		{
-			name: "entrance: step with ramp — no ramp flag",
-			component: models.A11yComponent{
-				Type: models.ComponentEntrance,
-				Entrance: &models.EntranceProperties{
-					HasStep: boolPtr(true),
-					HasRamp: boolPtr(true),
-				},
-			},
-			wantFlags: []string{FlagEntranceContainsStep},
-		},
-		{
-			name: "entrance: nil entrance — no flags",
-			component: models.A11yComponent{
-				Type:     models.ComponentEntrance,
-				Entrance: nil,
-			},
-			wantFlags: nil,
-		},
-
-		// --- restroom ---
-		{
-			name: "restroom: not wheelchair accessible",
-			component: models.A11yComponent{
-				Type:     models.ComponentRestroom,
-				Restroom: &models.RestroomProperties{WheelchairAccessible: boolPtr(false)},
-			},
-			wantFlags: []string{FlagRestroomNotAccessible},
-		},
-		{
-			name: "restroom: door width below minimum",
-			component: models.A11yComponent{
-				Type:     models.ComponentRestroom,
-				Restroom: &models.RestroomProperties{DoorWidth: floatPtr(0.7)},
-			},
-			wantFlags: []string{FlagRestroomNarrowDoor},
-		},
-		{
-			name: "restroom: door width exactly at minimum — no flag",
-			component: models.A11yComponent{
-				Type:     models.ComponentRestroom,
-				Restroom: &models.RestroomProperties{DoorWidth: floatPtr(0.8)},
-			},
-			wantFlags: nil,
-		},
-		{
-			name: "restroom: missing grab rails",
-			component: models.A11yComponent{
-				Type:     models.ComponentRestroom,
-				Restroom: &models.RestroomProperties{GrabRails: boolPtr(false)},
-			},
-			wantFlags: []string{FlagRestroomNoGrabRails},
-		},
-		{
-			name: "restroom: nil restroom — no flags",
-			component: models.A11yComponent{
-				Type:     models.ComponentRestroom,
-				Restroom: nil,
-			},
-			wantFlags: nil,
-		},
-
-		// --- elevator ---
-		{
-			name: "elevator: cabin width below minimum",
-			component: models.A11yComponent{
-				Type:     models.ComponentElevator,
-				Elevator: &models.ElevatorProperties{Width: floatPtr(0.7)},
-			},
-			wantFlags: []string{FlagElevatorNarrowWidth},
-		},
-		{
-			name: "elevator: cabin depth below minimum",
-			component: models.A11yComponent{
-				Type:     models.ComponentElevator,
-				Elevator: &models.ElevatorProperties{Depth: floatPtr(1.0)},
-			},
-			wantFlags: []string{FlagElevatorShallowDep},
-		},
-		{
-			name: "elevator: missing braille",
-			component: models.A11yComponent{
-				Type:     models.ComponentElevator,
-				Elevator: &models.ElevatorProperties{Braille: boolPtr(false)},
-			},
-			wantFlags: []string{FlagElevatorNoBraille},
-		},
-		{
-			name: "elevator: missing audio",
-			component: models.A11yComponent{
-				Type:     models.ComponentElevator,
-				Elevator: &models.ElevatorProperties{Audio: boolPtr(false)},
-			},
-			wantFlags: []string{FlagElevatorNoAudio},
-		},
-		{
-			name: "elevator: nil elevator — no flags",
-			component: models.A11yComponent{
-				Type:     models.ComponentElevator,
-				Elevator: nil,
-			},
-			wantFlags: nil,
-		},
-
-		// --- parking ---
-		{
-			name: "parking: no disabled spaces",
-			component: models.A11yComponent{
-				Type:    models.ComponentParking,
-				Parking: &models.ParkingProperties{HasDisabledSpaces: boolPtr(false)},
-			},
-			wantFlags: []string{FlagParkingNoDisabledSpaces},
-		},
-		{
-			name: "parking: has disabled spaces — no flag",
-			component: models.A11yComponent{
-				Type:    models.ComponentParking,
-				Parking: &models.ParkingProperties{HasDisabledSpaces: boolPtr(true)},
-			},
-			wantFlags: nil,
-		},
-		{
-			name: "parking: nil parking — no flags",
-			component: models.A11yComponent{
-				Type:    models.ComponentParking,
-				Parking: nil,
-			},
-			wantFlags: nil,
-		},
-
-		// --- other ---
-		{
-			name: "component type other — no flags regardless of data",
-			component: models.A11yComponent{
-				Type: models.ComponentOther,
-			},
-			wantFlags: nil,
-		},
-	}
-
-	// Nil profile must not panic.
 	t.Run("nil profile does not panic", func(_ *testing.T) {
 		engine.WithAuditFlags(nil)
 	})
 
-	// Existing flags are cleared before re-evaluation.
-	t.Run("existing flags are reset", func(t *testing.T) {
-		profile := &models.AccessibilityProfile{
-			Components: []models.A11yComponent{
-				{
-					Type:       models.ComponentEntrance,
-					AuditFlags: []string{"stale flag"},
-					Entrance:   &models.EntranceProperties{Width: floatPtr(1.0)},
-				},
-			},
-		}
-		engine.WithAuditFlags(profile)
-		if len(profile.Components[0].AuditFlags) != 0 {
-			t.Errorf("expected stale flags to be cleared, got %v", profile.Components[0].AuditFlags)
-		}
-	})
+	tests := []struct {
+		name      string
+		profile   models.AccessibilityProfile
+		wantFlags map[string][]string // component → expected flags
+	}{
+		// --- entrance ---
+		{
+			name:      "entrance: no properties, no flags",
+			profile:   models.AccessibilityProfile{Entrance: &models.EntranceProps{}},
+			wantFlags: map[string][]string{"entrance": nil},
+		},
+		{
+			name:      "entrance: width below 0.8m",
+			profile:   models.AccessibilityProfile{Entrance: &models.EntranceProps{Width: floatPtr(0.75)}},
+			wantFlags: map[string][]string{"entrance": {FlagEntranceNarrowWidth}},
+		},
+		{
+			name:      "entrance: width exactly 0.8m, no flag",
+			profile:   models.AccessibilityProfile{Entrance: &models.EntranceProps{Width: floatPtr(0.8)}},
+			wantFlags: map[string][]string{"entrance": nil},
+		},
+		{
+			name:      "entrance: not level and no ramp",
+			profile:   models.AccessibilityProfile{Entrance: &models.EntranceProps{IsLevel: boolPtr(false)}},
+			wantFlags: map[string][]string{"entrance": {FlagEntranceNoLevelRoute}},
+		},
+		{
+			name:      "entrance: not level but has fixed ramp, no flag",
+			profile:   models.AccessibilityProfile{Entrance: &models.EntranceProps{IsLevel: boolPtr(false), HasFixedRamp: boolPtr(true)}},
+			wantFlags: map[string][]string{"entrance": nil},
+		},
+		{
+			name:      "entrance: is level, no flag",
+			profile:   models.AccessibilityProfile{Entrance: &models.EntranceProps{IsLevel: boolPtr(true)}},
+			wantFlags: map[string][]string{"entrance": nil},
+		},
+
+		// --- pathways ---
+		{
+			name:      "pathway: width below 0.9m",
+			profile:   models.AccessibilityProfile{Pathways: &models.PathwayProps{Width: floatPtr(0.8)}},
+			wantFlags: map[string][]string{"pathways": {FlagPathwayNarrowWidth}},
+		},
+		{
+			name:      "pathway: width at 0.9m, no flag",
+			profile:   models.AccessibilityProfile{Pathways: &models.PathwayProps{Width: floatPtr(0.9)}},
+			wantFlags: map[string][]string{"pathways": nil},
+		},
+
+		// --- restroom ---
+		{
+			name:      "restroom: door width below 0.8m",
+			profile:   models.AccessibilityProfile{Restroom: &models.RestroomProps{DoorWidth: floatPtr(0.75)}},
+			wantFlags: map[string][]string{"restroom": {FlagRestroomNarrowDoor}},
+		},
+		{
+			name:      "restroom: turning radius below 1.5m",
+			profile:   models.AccessibilityProfile{Restroom: &models.RestroomProps{TurningRadius: floatPtr(1.2)}},
+			wantFlags: map[string][]string{"restroom": {FlagRestroomSmallTurning}},
+		},
+		{
+			name:      "restroom: no grab rails",
+			profile:   models.AccessibilityProfile{Restroom: &models.RestroomProps{HasGrabRails: boolPtr(false)}},
+			wantFlags: map[string][]string{"restroom": {FlagRestroomNoGrabRails}},
+		},
+		{
+			name:      "restroom: has grab rails, no flag",
+			profile:   models.AccessibilityProfile{Restroom: &models.RestroomProps{HasGrabRails: boolPtr(true)}},
+			wantFlags: map[string][]string{"restroom": nil},
+		},
+
+		// --- parking ---
+		{
+			name:      "parking: no disabled spaces",
+			profile:   models.AccessibilityProfile{Parking: &models.ParkingProps{HasDisabledSpaces: boolPtr(false)}},
+			wantFlags: map[string][]string{"parking": {FlagParkingNoDisabledSpaces}},
+		},
+		{
+			name:      "parking: has disabled spaces, no flag",
+			profile:   models.AccessibilityProfile{Parking: &models.ParkingProps{HasDisabledSpaces: boolPtr(true)}},
+			wantFlags: map[string][]string{"parking": nil},
+		},
+
+		// --- elevator ---
+		{
+			name:      "elevator: width below 0.8m",
+			profile:   models.AccessibilityProfile{Elevator: &models.ElevatorProps{Width: floatPtr(0.7)}},
+			wantFlags: map[string][]string{"elevator": {FlagElevatorNarrowWidth}},
+		},
+		{
+			name:      "elevator: depth below 1.1m",
+			profile:   models.AccessibilityProfile{Elevator: &models.ElevatorProps{Depth: floatPtr(1.0)}},
+			wantFlags: map[string][]string{"elevator": {FlagElevatorShallowDepth}},
+		},
+		{
+			name:      "elevator: door width below 0.8m",
+			profile:   models.AccessibilityProfile{Elevator: &models.ElevatorProps{DoorWidth: floatPtr(0.75)}},
+			wantFlags: map[string][]string{"elevator": {FlagElevatorNarrowDoor}},
+		},
+		{
+			name:      "elevator: no braille",
+			profile:   models.AccessibilityProfile{Elevator: &models.ElevatorProps{HasBraille: boolPtr(false)}},
+			wantFlags: map[string][]string{"elevator": {FlagElevatorNoBraille}},
+		},
+		{
+			name:      "elevator: no audio",
+			profile:   models.AccessibilityProfile{Elevator: &models.ElevatorProps{HasAudio: boolPtr(false)}},
+			wantFlags: map[string][]string{"elevator": {FlagElevatorNoAudio}},
+		},
+	}
 
 	for _, tt := range tests {
-		if tt.name == "nil profile does not panic" {
-			continue // handled above
-		}
 		t.Run(tt.name, func(t *testing.T) {
-			profile := &models.AccessibilityProfile{
-				Components: []models.A11yComponent{tt.component},
-			}
-			engine.WithAuditFlags(profile)
-			got := profile.Components[0].AuditFlags
+			p := tt.profile
+			engine.WithAuditFlags(&p)
 
-			if len(tt.wantFlags) == 0 && len(got) == 0 {
-				return
+			checkFlags := func(component string, got []string, want []string) {
+				if len(want) == 0 && len(got) == 0 {
+					return
+				}
+				if len(got) != len(want) {
+					t.Errorf("%s: flags = %v, want %v", component, got, want)
+					return
+				}
+				for _, wf := range want {
+					if !slices.Contains(got, wf) {
+						t.Errorf("%s: missing flag %q in %v", component, wf, got)
+					}
+				}
 			}
-			if len(got) != len(tt.wantFlags) {
-				t.Errorf("flags = %v, want %v", got, tt.wantFlags)
-				return
-			}
-			for _, wf := range tt.wantFlags {
-				if !slices.Contains(got, wf) {
-					t.Errorf("missing expected flag %q in %v", wf, got)
+
+			for comp, want := range tt.wantFlags {
+				switch comp {
+				case "entrance":
+					var got []string
+					if p.Entrance != nil {
+						got = p.Entrance.AuditFlags
+					}
+					checkFlags(comp, got, want)
+				case "pathways":
+					var got []string
+					if p.Pathways != nil {
+						got = p.Pathways.AuditFlags
+					}
+					checkFlags(comp, got, want)
+				case "restroom":
+					var got []string
+					if p.Restroom != nil {
+						got = p.Restroom.AuditFlags
+					}
+					checkFlags(comp, got, want)
+				case "parking":
+					var got []string
+					if p.Parking != nil {
+						got = p.Parking.AuditFlags
+					}
+					checkFlags(comp, got, want)
+				case "elevator":
+					var got []string
+					if p.Elevator != nil {
+						got = p.Elevator.AuditFlags
+					}
+					checkFlags(comp, got, want)
 				}
 			}
 		})

@@ -95,13 +95,13 @@ func TestTransformNode_ReturnsProfileWhenA11yTagsPresent(t *testing.T) {
 		t.Fatalf("TransformNode: %v", err)
 	}
 	if place.Accessibility != nil {
-		t.Errorf("place.Accessibility should be nil — profile is returned separately")
+		t.Errorf("place.Accessibility should be nil; profile is returned separately")
 	}
 	if profile == nil {
 		t.Fatalf("profile = nil, want non-nil when wheelchair=yes present")
 	}
-	if profile.OverallStatus != models.StatusAccessible {
-		t.Errorf("OverallStatus = %q, want accessible", profile.OverallStatus)
+	if len(profile.SourceReports) == 0 || profile.SourceReports[0].Value != "yes" {
+		t.Errorf("expected source report with value 'yes', got %v", profile.SourceReports)
 	}
 }
 

@@ -246,7 +246,7 @@ func TestHandlePatchAccessibility_WithValidKey(t *testing.T) {
 
 	rawKey := registerKey(t, srv, "patcher@example.com")
 
-	profile := models.AccessibilityProfile{OverallStatus: models.StatusAccessible}
+	profile := models.AccessibilityProfile{Entrance: &models.EntranceProps{IsLevel: boolPtr(true)}}
 	body, _ := json.Marshal(profile)
 	r := httptest.NewRequest(http.MethodPatch, "/v1/places/"+place.ID+"/accessibility", bytes.NewReader(body))
 	r.Header.Set("Content-Type", "application/json")

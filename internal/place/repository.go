@@ -112,8 +112,8 @@ func (r *Repository) AttachExternalRef(
 	return nil
 }
 
-// UpsertProfile creates or replaces the accessibility profile. Always overwrites — API write path.
-// Returns created=true when a new row was inserted, false when an existing row was updated.
+// UpsertProfile creates or replaces the accessibility profile. Always overwrites.
+// Returns created=true when a new row was inserted, false on update.
 func (r *Repository) UpsertProfile(ctx context.Context, placeID string, profile *models.AccessibilityProfile) (created bool, err error) {
 	if profile == nil {
 		return false, fmt.Errorf("upsert profile: nil profile")
@@ -138,8 +138,12 @@ func (r *Repository) UpsertProfile(ctx context.Context, placeID string, profile 
 			return tx.Create(profile).Error
 		}
 		updates := map[string]any{
-			"overall_status": profile.OverallStatus,
-			"components":     profile.Components,
+			"source_reports": profile.SourceReports,
+			"entrance":       profile.Entrance,
+			"pathways":       profile.Pathways,
+			"restroom":       profile.Restroom,
+			"parking":        profile.Parking,
+			"elevator":       profile.Elevator,
 			"updated_at":     now,
 			"submitted_by":   profile.SubmittedBy,
 			"submitted_at":   profile.SubmittedAt,
@@ -182,8 +186,12 @@ func (r *Repository) UpsertProfileIngestion(ctx context.Context, placeID string,
 			return nil
 		}
 		updates := map[string]any{
-			"overall_status": profile.OverallStatus,
-			"components":     profile.Components,
+			"source_reports": profile.SourceReports,
+			"entrance":       profile.Entrance,
+			"pathways":       profile.Pathways,
+			"restroom":       profile.Restroom,
+			"parking":        profile.Parking,
+			"elevator":       profile.Elevator,
 			"updated_at":     now,
 			"submitted_by":   nil,
 			"submitted_at":   nil,
