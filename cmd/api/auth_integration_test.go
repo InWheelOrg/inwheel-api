@@ -161,6 +161,9 @@ func TestHandlePostPlace_WithValidKey(t *testing.T) {
 		Lng:      24.9,
 		Category: models.CategoryCafe,
 		Rank:     models.RankEstablishment,
+		Accessibility: &models.AccessibilityProfile{
+			Entrance: &models.EntranceProps{IsLevel: boolPtr(true)},
+		},
 	})
 	r := httptest.NewRequest(http.MethodPost, "/v1/places", bytes.NewReader(body))
 	r.Header.Set("Content-Type", "application/json")
@@ -171,6 +174,14 @@ func TestHandlePostPlace_WithValidKey(t *testing.T) {
 
 	if w.Code != http.StatusCreated {
 		t.Fatalf("status = %d, want 201; body: %s", w.Code, w.Body.String())
+	}
+
+	var got models.Place
+	if err := json.NewDecoder(w.Body).Decode(&got); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if got.Accessibility == nil || !got.Accessibility.UserVerified {
+		t.Error("user_verified should be true after an authenticated create with inline accessibility")
 	}
 }
 
@@ -258,6 +269,14 @@ func TestHandlePatchAccessibility_WithValidKey(t *testing.T) {
 
 	if w.Code != http.StatusOK {
 		t.Fatalf("status = %d, want 200; body: %s", w.Code, w.Body.String())
+	}
+
+	var got models.AccessibilityProfile
+	if err := json.NewDecoder(w.Body).Decode(&got); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if !got.UserVerified {
+		t.Error("user_verified should be true after an authenticated PATCH")
 	}
 }
 

@@ -254,6 +254,7 @@ func (s *Server) CreatePlace(ctx context.Context, request apiv1.CreatePlaceReque
 		place.Accessibility.UpdatedAt = now
 		if keyID != "" {
 			place.Accessibility.SubmittedBy = &keyID
+			place.Accessibility.UserVerified = true
 		}
 		place.Accessibility.SubmittedAt = &now
 		s.engine.WithAuditFlags(place.Accessibility)
@@ -304,6 +305,7 @@ func (s *Server) PatchPlaceAccessibility(ctx context.Context, request apiv1.Patc
 	now := time.Now()
 	if keyID != "" {
 		input.SubmittedBy = &keyID
+		input.UserVerified = true
 	}
 	input.SubmittedAt = &now
 
