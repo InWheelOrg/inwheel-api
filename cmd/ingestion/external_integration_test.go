@@ -14,7 +14,6 @@ import (
 
 	"github.com/InWheelOrg/inwheel-api/internal/identity"
 	"github.com/InWheelOrg/inwheel-api/internal/sources"
-	"github.com/InWheelOrg/inwheel-api/internal/testhelpers"
 	"github.com/InWheelOrg/inwheel-api/pkg/models"
 )
 
@@ -36,12 +35,9 @@ func (s *syntheticSource) FullImport(ctx context.Context, sink sources.RecordSin
 }
 
 func TestExternalIngest_RoutesAllThreeOutcomes(t *testing.T) {
+	t.Cleanup(func() { truncate(t) })
 	ctx := context.Background()
-	db, cleanup, err := testhelpers.StartPostgres(ctx)
-	if err != nil {
-		t.Fatalf("start postgres: %v", err)
-	}
-	defer cleanup()
+	db := testDB
 
 	seedPlaces := []models.Place{
 		{

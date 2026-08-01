@@ -13,18 +13,14 @@ import (
 	"testing"
 	"time"
 
-	"github.com/InWheelOrg/inwheel-api/internal/testhelpers"
 	"github.com/InWheelOrg/inwheel-api/internal/unmatched"
 	"github.com/InWheelOrg/inwheel-api/pkg/models"
 )
 
 func TestRetrySweep_DrainsMatchableQueueRowsAfterOSMIngest(t *testing.T) {
+	t.Cleanup(func() { truncate(t) })
 	ctx := context.Background()
-	db, connInfo, cleanup, err := testhelpers.StartPostgresWithConnInfo(ctx)
-	if err != nil {
-		t.Fatalf("start postgres: %v", err)
-	}
-	defer cleanup()
+	db := testDB
 
 	queueRepo := unmatched.NewRepository(db)
 	clock := time.Date(2026, 6, 6, 12, 0, 0, 0, time.UTC)
@@ -58,12 +54,12 @@ func TestRetrySweep_DrainsMatchableQueueRowsAfterOSMIngest(t *testing.T) {
 	}
 
 	cfg := config{
-		DBHost:     connInfo.Host,
-		DBPort:     connInfo.Port,
-		DBUser:     connInfo.User,
-		DBPassword: connInfo.Password,
-		DBName:     connInfo.Name,
-		DBSSLMode:  connInfo.SSLMode,
+		DBHost:     testConnInfo.Host,
+		DBPort:     testConnInfo.Port,
+		DBUser:     testConnInfo.User,
+		DBPassword: testConnInfo.Password,
+		DBName:     testConnInfo.Name,
+		DBSSLMode:  testConnInfo.SSLMode,
 		OSMPBFPath: fixturePBFPath,
 	}
 	if err := run(ctx, "osm", "full-import", cfg); err != nil {

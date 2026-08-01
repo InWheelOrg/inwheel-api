@@ -10,15 +10,47 @@ package main
 import (
 	"context"
 	"fmt"
+	"log"
 	"math"
+	"os"
 	"testing"
 	"time"
+
+	"gorm.io/gorm"
 
 	"github.com/InWheelOrg/inwheel-api/internal/place"
 	"github.com/InWheelOrg/inwheel-api/internal/sources"
 	"github.com/InWheelOrg/inwheel-api/internal/testhelpers"
 	"github.com/InWheelOrg/inwheel-api/pkg/models"
 )
+
+var (
+	testDB       *gorm.DB
+	testConnInfo testhelpers.ConnInfo
+)
+
+func TestMain(m *testing.M) {
+	os.Exit(runTests(m))
+}
+
+func runTests(m *testing.M) int {
+	ctx := context.Background()
+	var cleanup func()
+	var err error
+
+	testDB, testConnInfo, cleanup, err = testhelpers.StartPostgresWithConnInfo(ctx)
+	if err != nil {
+		log.Fatalf("start test postgres: %v", err)
+	}
+	defer cleanup()
+
+	return m.Run()
+}
+
+func truncate(t *testing.T) {
+	t.Helper()
+	testDB.Exec("TRUNCATE places, accessibility_profiles, unmatched_external CASCADE")
+}
 
 const fixturePBFPath = "../../testdata/andorra-sample.osm.pbf"
 
@@ -84,20 +116,17 @@ var pinnedPOIs = []pinned{
 }
 
 func TestFullImport_AndorraFixture(t *testing.T) {
+	t.Cleanup(func() { truncate(t) })
 	ctx := context.Background()
-	db, connInfo, cleanup, err := testhelpers.StartPostgresWithConnInfo(ctx)
-	if err != nil {
-		t.Fatalf("start postgres: %v", err)
-	}
-	defer cleanup()
+	db := testDB
 
 	cfg := config{
-		DBHost:     connInfo.Host,
-		DBPort:     connInfo.Port,
-		DBUser:     connInfo.User,
-		DBPassword: connInfo.Password,
-		DBName:     connInfo.Name,
-		DBSSLMode:  connInfo.SSLMode,
+		DBHost:     testConnInfo.Host,
+		DBPort:     testConnInfo.Port,
+		DBUser:     testConnInfo.User,
+		DBPassword: testConnInfo.Password,
+		DBName:     testConnInfo.Name,
+		DBSSLMode:  testConnInfo.SSLMode,
 		OSMPBFPath: fixturePBFPath,
 	}
 
@@ -178,12 +207,9 @@ func TestFullImport_AndorraFixture(t *testing.T) {
 }
 
 func TestRunCanonical_WritesAccessibilityProfiles(t *testing.T) {
+	t.Cleanup(func() { truncate(t) })
 	ctx := context.Background()
-	db, cleanup, err := testhelpers.StartPostgres(ctx)
-	if err != nil {
-		t.Fatalf("start postgres: %v", err)
-	}
-	defer cleanup()
+	db := testDB
 
 	src := &fakeCanonicalSource{
 		emit: []fakeEmit{
@@ -228,12 +254,9 @@ func TestRunCanonical_WritesAccessibilityProfiles(t *testing.T) {
 }
 
 func TestRunCanonical_DoesNotOverwriteUserVerified(t *testing.T) {
+	t.Cleanup(func() { truncate(t) })
 	ctx := context.Background()
-	db, cleanup, err := testhelpers.StartPostgres(ctx)
-	if err != nil {
-		t.Fatalf("start postgres: %v", err)
-	}
-	defer cleanup()
+	db := testDB
 
 	isLevel := false
 	repo := place.NewRepository(db)
@@ -247,7 +270,7 @@ func TestRunCanonical_DoesNotOverwriteUserVerified(t *testing.T) {
 	if err := db.Create(&seed).Error; err != nil {
 		t.Fatalf("seed place: %v", err)
 	}
-	_, err = repo.UpsertProfile(ctx, seed.ID, &models.AccessibilityProfile{
+	_, err := repo.UpsertProfile(ctx, seed.ID, &models.AccessibilityProfile{
 		Entrance:     &models.EntranceProps{IsLevel: &isLevel},
 		UserVerified: true,
 	})

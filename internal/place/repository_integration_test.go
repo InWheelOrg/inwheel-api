@@ -10,6 +10,8 @@ package place_test
 import (
 	"context"
 	"errors"
+	"log"
+	"os"
 	"strings"
 	"testing"
 	"time"
@@ -21,15 +23,37 @@ import (
 	"github.com/InWheelOrg/inwheel-api/pkg/models"
 )
 
+var testDB *gorm.DB
+
+func TestMain(m *testing.M) {
+	os.Exit(run(m))
+}
+
+func run(m *testing.M) int {
+	ctx := context.Background()
+	var cleanup func()
+	var err error
+
+	testDB, cleanup, err = testhelpers.StartPostgres(ctx)
+	if err != nil {
+		log.Fatalf("start test postgres: %v", err)
+	}
+	defer cleanup()
+
+	return m.Run()
+}
+
+func truncate(t *testing.T) {
+	t.Helper()
+	testDB.Exec("TRUNCATE places, accessibility_profiles, unmatched_external CASCADE")
+}
+
 func boolPtr(b bool) *bool { return &b }
 
 func TestUpsertBatch_InsertsNewPlaces(t *testing.T) {
+	t.Cleanup(func() { truncate(t) })
 	ctx := context.Background()
-	db, cleanup, err := testhelpers.StartPostgres(ctx)
-	if err != nil {
-		t.Fatalf("start postgres: %v", err)
-	}
-	defer cleanup()
+	db := testDB
 
 	repo := place.NewRepository(db)
 
@@ -60,12 +84,9 @@ func TestUpsertBatch_InsertsNewPlaces(t *testing.T) {
 }
 
 func TestUpsertBatch_UpdatesExistingPlace(t *testing.T) {
+	t.Cleanup(func() { truncate(t) })
 	ctx := context.Background()
-	db, cleanup, err := testhelpers.StartPostgres(ctx)
-	if err != nil {
-		t.Fatalf("start postgres: %v", err)
-	}
-	defer cleanup()
+	db := testDB
 
 	repo := place.NewRepository(db)
 
@@ -98,12 +119,9 @@ func TestUpsertBatch_UpdatesExistingPlace(t *testing.T) {
 }
 
 func TestUpsertBatch_EmptySliceIsNoOp(t *testing.T) {
+	t.Cleanup(func() { truncate(t) })
 	ctx := context.Background()
-	db, cleanup, err := testhelpers.StartPostgres(ctx)
-	if err != nil {
-		t.Fatalf("start postgres: %v", err)
-	}
-	defer cleanup()
+	db := testDB
 
 	repo := place.NewRepository(db)
 	if err := repo.UpsertBatch(ctx, nil); err != nil {
@@ -115,12 +133,9 @@ func TestUpsertBatch_EmptySliceIsNoOp(t *testing.T) {
 }
 
 func TestFindCandidates_EmptyCategoriesReturnsNil(t *testing.T) {
+	t.Cleanup(func() { truncate(t) })
 	ctx := context.Background()
-	db, cleanup, err := testhelpers.StartPostgres(ctx)
-	if err != nil {
-		t.Fatalf("start postgres: %v", err)
-	}
-	defer cleanup()
+	db := testDB
 
 	repo := place.NewRepository(db)
 	got, err := repo.FindCandidates(ctx, 46.4628, 6.8417, 50, nil)
@@ -133,12 +148,9 @@ func TestFindCandidates_EmptyCategoriesReturnsNil(t *testing.T) {
 }
 
 func TestFindCandidates_RadiusStatusCategoryFilters(t *testing.T) {
+	t.Cleanup(func() { truncate(t) })
 	ctx := context.Background()
-	db, cleanup, err := testhelpers.StartPostgres(ctx)
-	if err != nil {
-		t.Fatalf("start postgres: %v", err)
-	}
-	defer cleanup()
+	db := testDB
 
 	repo := place.NewRepository(db)
 
@@ -172,12 +184,9 @@ func TestFindCandidates_RadiusStatusCategoryFilters(t *testing.T) {
 }
 
 func TestFindCandidates_OrdersByDistance(t *testing.T) {
+	t.Cleanup(func() { truncate(t) })
 	ctx := context.Background()
-	db, cleanup, err := testhelpers.StartPostgres(ctx)
-	if err != nil {
-		t.Fatalf("start postgres: %v", err)
-	}
-	defer cleanup()
+	db := testDB
 
 	repo := place.NewRepository(db)
 
@@ -233,12 +242,9 @@ func mustCreatePlace(ctx context.Context, t *testing.T, db *gorm.DB, osmID int64
 }
 
 func TestRepository_UpsertProfile_CreatesWhenAbsent(t *testing.T) {
+	t.Cleanup(func() { truncate(t) })
 	ctx := context.Background()
-	gormDB, cleanup, err := testhelpers.StartPostgres(ctx)
-	if err != nil {
-		t.Fatalf("start postgres: %v", err)
-	}
-	defer cleanup()
+	gormDB := testDB
 
 	repo := place.NewRepository(gormDB)
 	placeID := mustCreatePlace(ctx, t, gormDB, 1001, "Profile Test Place")
@@ -267,12 +273,9 @@ func TestRepository_UpsertProfile_CreatesWhenAbsent(t *testing.T) {
 }
 
 func TestRepository_UpsertProfile_UpdatesWhenPresent(t *testing.T) {
+	t.Cleanup(func() { truncate(t) })
 	ctx := context.Background()
-	gormDB, cleanup, err := testhelpers.StartPostgres(ctx)
-	if err != nil {
-		t.Fatalf("start postgres: %v", err)
-	}
-	defer cleanup()
+	gormDB := testDB
 
 	repo := place.NewRepository(gormDB)
 	placeID := mustCreatePlace(ctx, t, gormDB, 1002, "Profile Update Place")
@@ -310,12 +313,9 @@ func TestRepository_UpsertProfile_UpdatesWhenPresent(t *testing.T) {
 }
 
 func TestRepository_UpsertProfile_OverwritesUserVerified(t *testing.T) {
+	t.Cleanup(func() { truncate(t) })
 	ctx := context.Background()
-	gormDB, cleanup, err := testhelpers.StartPostgres(ctx)
-	if err != nil {
-		t.Fatalf("start postgres: %v", err)
-	}
-	defer cleanup()
+	gormDB := testDB
 
 	repo := place.NewRepository(gormDB)
 	placeID := mustCreatePlace(ctx, t, gormDB, 1003, "User Verified Overwrite Place")
@@ -342,27 +342,21 @@ func TestRepository_UpsertProfile_OverwritesUserVerified(t *testing.T) {
 }
 
 func TestRepository_UpsertProfile_PlaceNotFound(t *testing.T) {
+	t.Cleanup(func() { truncate(t) })
 	ctx := context.Background()
-	db, cleanup, err := testhelpers.StartPostgres(ctx)
-	if err != nil {
-		t.Fatalf("start postgres: %v", err)
-	}
-	defer cleanup()
+	db := testDB
 
 	repo := place.NewRepository(db)
-	_, err = repo.UpsertProfile(ctx, "00000000-0000-0000-0000-000000000000", &models.AccessibilityProfile{})
+	_, err := repo.UpsertProfile(ctx, "00000000-0000-0000-0000-000000000000", &models.AccessibilityProfile{})
 	if !errors.Is(err, place.ErrPlaceNotFound) {
 		t.Errorf("err = %v, want ErrPlaceNotFound", err)
 	}
 }
 
 func TestRepository_UpsertProfileIngestion_InsertsWhenAbsent(t *testing.T) {
+	t.Cleanup(func() { truncate(t) })
 	ctx := context.Background()
-	db, cleanup, err := testhelpers.StartPostgres(ctx)
-	if err != nil {
-		t.Fatalf("start postgres: %v", err)
-	}
-	defer cleanup()
+	db := testDB
 	repo := place.NewRepository(db)
 	placeID := mustCreatePlace(ctx, t, db, 9004, "Café Pascal Ingestion")
 
@@ -381,12 +375,9 @@ func TestRepository_UpsertProfileIngestion_InsertsWhenAbsent(t *testing.T) {
 }
 
 func TestRepository_UpsertProfileIngestion_OverwritesNonVerified(t *testing.T) {
+	t.Cleanup(func() { truncate(t) })
 	ctx := context.Background()
-	db, cleanup, err := testhelpers.StartPostgres(ctx)
-	if err != nil {
-		t.Fatalf("start postgres: %v", err)
-	}
-	defer cleanup()
+	db := testDB
 	repo := place.NewRepository(db)
 	placeID := mustCreatePlace(ctx, t, db, 9005, "Café Pascal Ingestion2")
 
@@ -408,12 +399,9 @@ func TestRepository_UpsertProfileIngestion_OverwritesNonVerified(t *testing.T) {
 }
 
 func TestRepository_UpsertProfileIngestion_SkipsUserVerified(t *testing.T) {
+	t.Cleanup(func() { truncate(t) })
 	ctx := context.Background()
-	db, cleanup, err := testhelpers.StartPostgres(ctx)
-	if err != nil {
-		t.Fatalf("start postgres: %v", err)
-	}
-	defer cleanup()
+	db := testDB
 	repo := place.NewRepository(db)
 	placeID := mustCreatePlace(ctx, t, db, 9006, "Café Pascal Ingestion3")
 
@@ -435,12 +423,9 @@ func TestRepository_UpsertProfileIngestion_SkipsUserVerified(t *testing.T) {
 }
 
 func TestUnmatchedExternal_TableRoundTrip(t *testing.T) {
+	t.Cleanup(func() { truncate(t) })
 	ctx := context.Background()
-	db, cleanup, err := testhelpers.StartPostgres(ctx)
-	if err != nil {
-		t.Fatalf("start postgres: %v", err)
-	}
-	defer cleanup()
+	db := testDB
 
 	sqlDB, err := db.DB()
 	if err != nil {
@@ -485,12 +470,9 @@ func TestUnmatchedExternal_TableRoundTrip(t *testing.T) {
 }
 
 func TestUnmatchedExternal_UniqueConstraint(t *testing.T) {
+	t.Cleanup(func() { truncate(t) })
 	ctx := context.Background()
-	db, cleanup, err := testhelpers.StartPostgres(ctx)
-	if err != nil {
-		t.Fatalf("start postgres: %v", err)
-	}
-	defer cleanup()
+	db := testDB
 
 	sqlDB, err := db.DB()
 	if err != nil {
@@ -513,12 +495,9 @@ func TestUnmatchedExternal_UniqueConstraint(t *testing.T) {
 }
 
 func TestUnmatchedExternal_ColumnDefaults(t *testing.T) {
+	t.Cleanup(func() { truncate(t) })
 	ctx := context.Background()
-	db, cleanup, err := testhelpers.StartPostgres(ctx)
-	if err != nil {
-		t.Fatalf("start postgres: %v", err)
-	}
-	defer cleanup()
+	db := testDB
 
 	sqlDB, err := db.DB()
 	if err != nil {
@@ -551,12 +530,9 @@ func TestUnmatchedExternal_ColumnDefaults(t *testing.T) {
 }
 
 func TestAttachExternalRef_EmptyMap(t *testing.T) {
+	t.Cleanup(func() { truncate(t) })
 	ctx := context.Background()
-	db, cleanup, err := testhelpers.StartPostgres(ctx)
-	if err != nil {
-		t.Fatalf("start postgres: %v", err)
-	}
-	defer cleanup()
+	db := testDB
 
 	repo := place.NewRepository(db)
 
@@ -598,12 +574,9 @@ func TestAttachExternalRef_EmptyMap(t *testing.T) {
 }
 
 func TestAttachExternalRef_ExistingDifferentKey(t *testing.T) {
+	t.Cleanup(func() { truncate(t) })
 	ctx := context.Background()
-	db, cleanup, err := testhelpers.StartPostgres(ctx)
-	if err != nil {
-		t.Fatalf("start postgres: %v", err)
-	}
-	defer cleanup()
+	db := testDB
 
 	repo := place.NewRepository(db)
 
@@ -648,12 +621,9 @@ func TestAttachExternalRef_ExistingDifferentKey(t *testing.T) {
 }
 
 func TestAttachExternalRef_ExistingSameKey(t *testing.T) {
+	t.Cleanup(func() { truncate(t) })
 	ctx := context.Background()
-	db, cleanup, err := testhelpers.StartPostgres(ctx)
-	if err != nil {
-		t.Fatalf("start postgres: %v", err)
-	}
-	defer cleanup()
+	db := testDB
 
 	repo := place.NewRepository(db)
 
@@ -696,17 +666,14 @@ func TestAttachExternalRef_ExistingSameKey(t *testing.T) {
 }
 
 func TestAttachExternalRef_PlaceNotFound(t *testing.T) {
+	t.Cleanup(func() { truncate(t) })
 	ctx := context.Background()
-	db, cleanup, err := testhelpers.StartPostgres(ctx)
-	if err != nil {
-		t.Fatalf("start postgres: %v", err)
-	}
-	defer cleanup()
+	db := testDB
 
 	repo := place.NewRepository(db)
 
 	ref := models.ExternalRef{ID: "wm/999", Confidence: 0.9, MatchedAt: time.Now()}
-	err = repo.AttachExternalRef(ctx, "00000000-0000-0000-0000-000000000000", "wheelmap", ref)
+	err := repo.AttachExternalRef(ctx, "00000000-0000-0000-0000-000000000000", "wheelmap", ref)
 	if err == nil {
 		t.Fatal("expected error for non-existent place, got nil")
 	}
@@ -716,12 +683,9 @@ func TestAttachExternalRef_PlaceNotFound(t *testing.T) {
 }
 
 func TestUnmatchedExternal_SpatialQuery(t *testing.T) {
+	t.Cleanup(func() { truncate(t) })
 	ctx := context.Background()
-	db, cleanup, err := testhelpers.StartPostgres(ctx)
-	if err != nil {
-		t.Fatalf("start postgres: %v", err)
-	}
-	defer cleanup()
+	db := testDB
 
 	sqlDB, err := db.DB()
 	if err != nil {

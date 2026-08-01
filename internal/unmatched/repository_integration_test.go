@@ -10,22 +10,48 @@ package unmatched_test
 import (
 	"context"
 	"encoding/json"
+	"log"
 	"math"
+	"os"
 	"testing"
 	"time"
+
+	"gorm.io/gorm"
 
 	"github.com/InWheelOrg/inwheel-api/internal/testhelpers"
 	"github.com/InWheelOrg/inwheel-api/internal/unmatched"
 	"github.com/InWheelOrg/inwheel-api/pkg/models"
 )
 
-func TestEnqueue_FirstInsert(t *testing.T) {
+var testDB *gorm.DB
+
+func TestMain(m *testing.M) {
+	os.Exit(runTests(m))
+}
+
+func runTests(m *testing.M) int {
 	ctx := context.Background()
-	db, cleanup, err := testhelpers.StartPostgres(ctx)
+	var cleanup func()
+	var err error
+
+	testDB, cleanup, err = testhelpers.StartPostgres(ctx)
 	if err != nil {
-		t.Fatalf("start postgres: %v", err)
+		log.Fatalf("start test postgres: %v", err)
 	}
 	defer cleanup()
+
+	return m.Run()
+}
+
+func truncate(t *testing.T) {
+	t.Helper()
+	testDB.Exec("TRUNCATE places, unmatched_external CASCADE")
+}
+
+func TestEnqueue_FirstInsert(t *testing.T) {
+	t.Cleanup(func() { truncate(t) })
+	ctx := context.Background()
+	db := testDB
 
 	repo := unmatched.NewRepository(db)
 
@@ -141,12 +167,9 @@ func TestEnqueue_FirstInsert(t *testing.T) {
 }
 
 func TestEnqueue_ConflictBumpsAttempts(t *testing.T) {
+	t.Cleanup(func() { truncate(t) })
 	ctx := context.Background()
-	db, cleanup, err := testhelpers.StartPostgres(ctx)
-	if err != nil {
-		t.Fatalf("start postgres: %v", err)
-	}
-	defer cleanup()
+	db := testDB
 
 	repo := unmatched.NewRepository(db)
 
@@ -297,12 +320,9 @@ func TestEnqueue_ConflictBumpsAttempts(t *testing.T) {
 }
 
 func TestEnqueue_ConflictRefreshesCoordinates(t *testing.T) {
+	t.Cleanup(func() { truncate(t) })
 	ctx := context.Background()
-	db, cleanup, err := testhelpers.StartPostgres(ctx)
-	if err != nil {
-		t.Fatalf("start postgres: %v", err)
-	}
-	defer cleanup()
+	db := testDB
 
 	repo := unmatched.NewRepository(db)
 	clock := time.Date(2026, 6, 5, 12, 0, 0, 0, time.UTC)
@@ -370,12 +390,9 @@ func TestEnqueue_ConflictRefreshesCoordinates(t *testing.T) {
 }
 
 func TestEnqueue_DistinctPairsCoexist(t *testing.T) {
+	t.Cleanup(func() { truncate(t) })
 	ctx := context.Background()
-	db, cleanup, err := testhelpers.StartPostgres(ctx)
-	if err != nil {
-		t.Fatalf("start postgres: %v", err)
-	}
-	defer cleanup()
+	db := testDB
 
 	repo := unmatched.NewRepository(db)
 	clock := time.Date(2026, 6, 5, 12, 0, 0, 0, time.UTC)
@@ -436,12 +453,9 @@ func TestEnqueue_DistinctPairsCoexist(t *testing.T) {
 }
 
 func TestFindCandidatesNearTouched_ReturnsDistinctRowsNearTouchedPlaces(t *testing.T) {
+	t.Cleanup(func() { truncate(t) })
 	ctx := context.Background()
-	db, cleanup, err := testhelpers.StartPostgres(ctx)
-	if err != nil {
-		t.Fatalf("start postgres: %v", err)
-	}
-	defer cleanup()
+	db := testDB
 
 	repo := unmatched.NewRepository(db)
 	clock := time.Date(2026, 6, 6, 12, 0, 0, 0, time.UTC)
@@ -504,12 +518,9 @@ func TestFindCandidatesNearTouched_ReturnsDistinctRowsNearTouchedPlaces(t *testi
 }
 
 func TestBumpAttempts_IncrementsAndUpdatesTimestamp(t *testing.T) {
+	t.Cleanup(func() { truncate(t) })
 	ctx := context.Background()
-	db, cleanup, err := testhelpers.StartPostgres(ctx)
-	if err != nil {
-		t.Fatalf("start postgres: %v", err)
-	}
-	defer cleanup()
+	db := testDB
 
 	repo := unmatched.NewRepository(db)
 	clock := time.Date(2026, 6, 6, 12, 0, 0, 0, time.UTC)
@@ -557,12 +568,9 @@ func TestBumpAttempts_IncrementsAndUpdatesTimestamp(t *testing.T) {
 }
 
 func TestDelete_RemovesRow(t *testing.T) {
+	t.Cleanup(func() { truncate(t) })
 	ctx := context.Background()
-	db, cleanup, err := testhelpers.StartPostgres(ctx)
-	if err != nil {
-		t.Fatalf("start postgres: %v", err)
-	}
-	defer cleanup()
+	db := testDB
 
 	repo := unmatched.NewRepository(db)
 	clock := time.Date(2026, 6, 6, 12, 0, 0, 0, time.UTC)
