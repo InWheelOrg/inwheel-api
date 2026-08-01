@@ -16,6 +16,7 @@ func boolPtr(v bool) *bool        { return &v }
 func floatPtr(v float64) *float64 { return &v }
 
 func TestComputeEffectiveProfile(t *testing.T) {
+	t.Parallel()
 	engine := &Engine{}
 
 	t.Run("nil child returns nil", func(t *testing.T) {
@@ -107,6 +108,7 @@ func TestComputeEffectiveProfile(t *testing.T) {
 }
 
 func TestWithAuditFlags(t *testing.T) {
+	t.Parallel()
 	engine := &Engine{}
 
 	t.Run("nil profile does not panic", func(_ *testing.T) {

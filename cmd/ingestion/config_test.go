@@ -11,6 +11,7 @@ import (
 )
 
 func TestLoadConfig_AllValuesProvided(t *testing.T) {
+	t.Parallel()
 	env := map[string]string{
 		"DB_HOST":      "db.example.com",
 		"DB_PORT":      "6543",
@@ -35,6 +36,7 @@ func TestLoadConfig_AllValuesProvided(t *testing.T) {
 }
 
 func TestLoadConfig_AppliesDefaults(t *testing.T) {
+	t.Parallel()
 	env := map[string]string{"OSM_PBF_PATH": "/tmp/a.pbf"}
 
 	cfg, err := loadConfig(env)
@@ -48,6 +50,7 @@ func TestLoadConfig_AppliesDefaults(t *testing.T) {
 }
 
 func TestLoadConfig_MissingOSMPath(t *testing.T) {
+	t.Parallel()
 	_, err := loadConfig(map[string]string{})
 	if err == nil {
 		t.Fatal("expected error for missing OSM_PBF_PATH, got nil")
@@ -58,6 +61,7 @@ func TestLoadConfig_MissingOSMPath(t *testing.T) {
 }
 
 func TestLoadConfig_MalformedPort(t *testing.T) {
+	t.Parallel()
 	env := map[string]string{
 		"OSM_PBF_PATH": "/tmp/a.pbf",
 		"DB_PORT":      "not-a-number",
@@ -72,6 +76,7 @@ func TestLoadConfig_MalformedPort(t *testing.T) {
 }
 
 func TestLoadConfig_AccumulatesMultipleErrors(t *testing.T) {
+	t.Parallel()
 	env := map[string]string{"DB_PORT": "bad"}
 
 	_, err := loadConfig(env)

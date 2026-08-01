@@ -16,6 +16,7 @@ import (
 )
 
 func TestRequestLogger_SetsRequestIDHeader(t *testing.T) {
+	t.Parallel()
 	handler := middleware.RequestLogger(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
 	}))
@@ -34,6 +35,7 @@ func TestRequestLogger_SetsRequestIDHeader(t *testing.T) {
 }
 
 func TestRequestLogger_RequestIDInContext(t *testing.T) {
+	t.Parallel()
 	var ctxRequestID string
 	handler := middleware.RequestLogger(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		ctxRequestID = middleware.RequestIDFromCtx(r.Context())
@@ -53,6 +55,7 @@ func TestRequestLogger_RequestIDInContext(t *testing.T) {
 }
 
 func TestRequestLogger_CapturesStatusCode(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name   string
 		status int
@@ -77,6 +80,7 @@ func TestRequestLogger_CapturesStatusCode(t *testing.T) {
 }
 
 func TestSetLogAPIKeyID_EnrichesLogFields(t *testing.T) {
+	t.Parallel()
 	var enriched bool
 	handler := middleware.RequestLogger(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		// Simulate auth middleware setting the key ID
@@ -95,6 +99,7 @@ func TestSetLogAPIKeyID_EnrichesLogFields(t *testing.T) {
 }
 
 func TestRequestIDFromCtx_EmptyWithoutMiddleware(t *testing.T) {
+	t.Parallel()
 	id := middleware.RequestIDFromCtx(context.Background())
 	if id != "" {
 		t.Errorf("expected empty string, got %q", id)
@@ -102,6 +107,7 @@ func TestRequestIDFromCtx_EmptyWithoutMiddleware(t *testing.T) {
 }
 
 func TestAPIKeyIDFromCtx_RoundTrip(t *testing.T) {
+	t.Parallel()
 	ctx := middleware.WithAPIKeyID(context.Background(), "some-uuid")
 	got := middleware.APIKeyIDFromCtx(ctx)
 	if got != "some-uuid" {
@@ -110,6 +116,7 @@ func TestAPIKeyIDFromCtx_RoundTrip(t *testing.T) {
 }
 
 func TestAPIKeyIDFromCtx_EmptyWithoutValue(t *testing.T) {
+	t.Parallel()
 	got := middleware.APIKeyIDFromCtx(context.Background())
 	if got != "" {
 		t.Errorf("expected empty string, got %q", got)

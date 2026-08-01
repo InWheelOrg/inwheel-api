@@ -13,6 +13,7 @@ import (
 )
 
 func TestStreamNodes_FixturePBF(t *testing.T) {
+	t.Parallel()
 	f, err := os.Open("../../../testdata/andorra-sample.osm.pbf")
 	if err != nil {
 		t.Skipf("fixture PBF not available: %v", err)
@@ -39,6 +40,7 @@ func TestStreamNodes_FixturePBF(t *testing.T) {
 }
 
 func TestStreamNodes_StopsOnSinkError(t *testing.T) {
+	t.Parallel()
 	f, err := os.Open("../../../testdata/andorra-sample.osm.pbf")
 	if err != nil {
 		t.Skipf("fixture PBF not available: %v", err)

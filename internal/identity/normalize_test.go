@@ -13,6 +13,7 @@ import (
 )
 
 func TestNormalize(t *testing.T) {
+	t.Parallel()
 	cases := []struct {
 		name string
 		in   string

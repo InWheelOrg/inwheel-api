@@ -12,6 +12,7 @@ import (
 )
 
 func TestEncodeDecodeRoundTrip(t *testing.T) {
+	t.Parallel()
 	ts := time.Date(2026, 5, 1, 12, 0, 0, 123456000, time.UTC)
 	id := "11111111-2222-3333-4444-555555555555"
 
@@ -30,6 +31,7 @@ func TestEncodeDecodeRoundTrip(t *testing.T) {
 }
 
 func TestDecodeInvalidBase64(t *testing.T) {
+	t.Parallel()
 	_, _, err := Decode("not!valid!base64!!!!")
 	if err == nil {
 		t.Error("expected error for invalid base64")
@@ -37,6 +39,7 @@ func TestDecodeInvalidBase64(t *testing.T) {
 }
 
 func TestDecodeNoSeparator(t *testing.T) {
+	t.Parallel()
 	raw := base64.RawURLEncoding.EncodeToString([]byte("2026-05-01T12:00:00Z"))
 	_, _, err := Decode(raw)
 	if err == nil {
@@ -45,6 +48,7 @@ func TestDecodeNoSeparator(t *testing.T) {
 }
 
 func TestDecodeInvalidTimestamp(t *testing.T) {
+	t.Parallel()
 	raw := base64.RawURLEncoding.EncodeToString([]byte("not-a-timestamp|11111111-2222-3333-4444-555555555555"))
 	_, _, err := Decode(raw)
 	if err == nil {
@@ -53,6 +57,7 @@ func TestDecodeInvalidTimestamp(t *testing.T) {
 }
 
 func TestDecodeInvalidUUID(t *testing.T) {
+	t.Parallel()
 	raw := base64.RawURLEncoding.EncodeToString([]byte("2026-05-01T12:00:00Z|not-a-uuid"))
 	_, _, err := Decode(raw)
 	if err == nil {
@@ -61,6 +66,7 @@ func TestDecodeInvalidUUID(t *testing.T) {
 }
 
 func TestEncodeIsAlwaysUTC(t *testing.T) {
+	t.Parallel()
 	loc, _ := time.LoadLocation("Europe/Helsinki")
 	ts := time.Date(2026, 5, 1, 15, 0, 0, 0, loc) // UTC+3
 

@@ -14,6 +14,7 @@ import (
 )
 
 func TestExternalIDs_ScanValue_RoundTrip(t *testing.T) {
+	t.Parallel()
 	want := models.ExternalIDs{
 		"osm": models.ExternalRef{ID: "node/123", Confidence: 1.0},
 		"wheelmap": models.ExternalRef{
@@ -68,6 +69,7 @@ func TestExternalIDs_ScanValue_RoundTrip(t *testing.T) {
 }
 
 func TestExternalIDs_Scan_Nil(t *testing.T) {
+	t.Parallel()
 	var e models.ExternalIDs
 	if err := e.Scan(nil); err != nil {
 		t.Fatalf("Scan(nil): %v", err)
@@ -78,6 +80,7 @@ func TestExternalIDs_Scan_Nil(t *testing.T) {
 }
 
 func TestExternalIDs_Value_NilRoundTrip(t *testing.T) {
+	t.Parallel()
 	var original models.ExternalIDs // nil
 
 	v1, err := original.Value()
@@ -109,6 +112,7 @@ func TestExternalIDs_Value_NilRoundTrip(t *testing.T) {
 }
 
 func TestExternalIDs_Value_Nil(t *testing.T) {
+	t.Parallel()
 	var e models.ExternalIDs
 	val, err := e.Value()
 	if err != nil {

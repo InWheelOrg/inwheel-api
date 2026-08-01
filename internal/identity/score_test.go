@@ -17,6 +17,7 @@ func approxEqual(a, b float64) bool {
 }
 
 func TestDistanceScore(t *testing.T) {
+	t.Parallel()
 	// At this latitude, ~0.000449 deg lat is ~50 m.
 	const lat = 46.4628
 	const lng = 6.8417
@@ -44,6 +45,7 @@ func TestDistanceScore(t *testing.T) {
 }
 
 func TestNameScore(t *testing.T) {
+	t.Parallel()
 	cases := []struct {
 		name string
 		r    string
@@ -68,6 +70,7 @@ func TestNameScore(t *testing.T) {
 }
 
 func TestAddressScore(t *testing.T) {
+	t.Parallel()
 	cases := []struct {
 		name        string
 		rStreet     string
@@ -101,6 +104,7 @@ func TestAddressScore(t *testing.T) {
 }
 
 func TestCombinedScore(t *testing.T) {
+	t.Parallel()
 	cases := []struct {
 		name        string
 		distance    float64

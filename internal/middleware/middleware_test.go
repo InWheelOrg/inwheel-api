@@ -16,6 +16,7 @@ import (
 )
 
 func TestClientIP_IgnoresXForwardedFor(t *testing.T) {
+	t.Parallel()
 	r := httptest.NewRequest(http.MethodGet, "/", nil)
 	r.RemoteAddr = "1.2.3.4:9999"
 	r.Header.Set("X-Forwarded-For", "9.9.9.9")
@@ -26,6 +27,7 @@ func TestClientIP_IgnoresXForwardedFor(t *testing.T) {
 }
 
 func TestClientIP_SplitsRemoteAddr(t *testing.T) {
+	t.Parallel()
 	r := httptest.NewRequest(http.MethodGet, "/", nil)
 	r.RemoteAddr = "10.0.0.1:12345"
 
@@ -35,6 +37,7 @@ func TestClientIP_SplitsRemoteAddr(t *testing.T) {
 }
 
 func TestRateLimiter_RetryAfterSeconds(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		r    rate.Limit
 		want int
@@ -71,6 +74,7 @@ func TestRateLimiter_Sweep_EvictsIdleEntries(t *testing.T) {
 }
 
 func TestRateLimiter_Sweep_KeepsActiveEntries(t *testing.T) {
+	t.Parallel()
 	// Slow refill so tokens cannot recover during the test.
 	rl := &RateLimiter{r: rate.Every(time.Hour), b: 5}
 
@@ -88,6 +92,7 @@ func TestRateLimiter_Sweep_KeepsActiveEntries(t *testing.T) {
 // TestRateLimiter_EvictGoroutine_StopsOnContextCancel proves NewRateLimiter does not
 // leak its eviction goroutine: cancelling the context closes the internal done channel.
 func TestRateLimiter_EvictGoroutine_StopsOnContextCancel(t *testing.T) {
+	t.Parallel()
 	ctx, cancel := context.WithCancel(context.Background())
 	rl := NewRateLimiter(ctx, rate.Every(time.Second), 1)
 	cancel()

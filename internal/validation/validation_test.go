@@ -41,6 +41,7 @@ func errorsHaveField(errs []FieldError, field string) bool {
 // ── Email ─────────────────────────────────────────────────────────────────────
 
 func TestEmail(t *testing.T) {
+	t.Parallel()
 	valid := []string{
 		"user@example.com",
 		"first.last+tag@sub.example.co",
@@ -64,12 +65,14 @@ func TestEmail(t *testing.T) {
 // ── Place ─────────────────────────────────────────────────────────────────────
 
 func TestPlace_Valid(t *testing.T) {
+	t.Parallel()
 	if errs := Place(validPlace()); len(errs) != 0 {
 		t.Errorf("expected no errors, got %+v", errs)
 	}
 }
 
 func TestPlace_WhitespaceNameRejected(t *testing.T) {
+	t.Parallel()
 	p := validPlace()
 	p.Name = "   "
 	if !errorsHaveField(Place(p), "name") {
@@ -78,6 +81,7 @@ func TestPlace_WhitespaceNameRejected(t *testing.T) {
 }
 
 func TestPlace_Tags(t *testing.T) {
+	t.Parallel()
 	t.Run("too many entries", func(t *testing.T) {
 		p := validPlace()
 		p.Tags = make(models.PlaceTags, maxTagEntries+1)
@@ -109,6 +113,7 @@ func TestPlace_Tags(t *testing.T) {
 // Mutual exclusivity and group completeness — these cannot be expressed in the
 // OpenAPI spec and are the only query-param checks remaining in Go.
 func TestPlacesQuery_GroupRules(t *testing.T) {
+	t.Parallel()
 	f := ptrFloat
 	tests := []struct {
 		name   string
@@ -135,6 +140,7 @@ func TestPlacesQuery_GroupRules(t *testing.T) {
 
 // Bounding-box ordering: min must be strictly less than max.
 func TestPlacesQuery_BBoxOrdering(t *testing.T) {
+	t.Parallel()
 	f := ptrFloat
 	t.Run("swapped lng", func(t *testing.T) {
 		p := PlacesQueryParams{MinLng: f(14.0), MinLat: f(52.0), MaxLng: f(13.0), MaxLat: f(53.0)}
@@ -158,6 +164,7 @@ func TestPlacesQuery_BBoxOrdering(t *testing.T) {
 
 // Cursor format: base64-encoded timestamp|UUID pair.
 func TestPlacesQuery_CursorParam(t *testing.T) {
+	t.Parallel()
 	const validTS = "2026-05-01T12:00:00Z"
 	const validID = "11111111-2222-3333-4444-555555555555"
 
