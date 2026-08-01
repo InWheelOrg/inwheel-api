@@ -66,6 +66,27 @@ func TestSource_FullImport_EmitsFromFixture(t *testing.T) {
 	t.Logf("emitted %d places from Andorra fixture", emitted)
 }
 
+func TestSource_FullImport_EmitsWayPlaces(t *testing.T) {
+	t.Parallel()
+	requireFixture(t)
+	s := &Source{PBFPath: fixturePBF}
+
+	var wayPlaces int
+	sink := func(_ context.Context, p models.Place, _ *models.AccessibilityProfile) error {
+		if p.OSMType == models.OSMWay {
+			wayPlaces++
+		}
+		return nil
+	}
+
+	if err := s.FullImport(context.Background(), sink); err != nil {
+		t.Fatalf("FullImport: %v", err)
+	}
+	if wayPlaces == 0 {
+		t.Fatal("expected at least one way-derived place, got zero")
+	}
+}
+
 func TestSource_FullImport_PropagatesSinkError(t *testing.T) {
 	t.Parallel()
 	requireFixture(t)

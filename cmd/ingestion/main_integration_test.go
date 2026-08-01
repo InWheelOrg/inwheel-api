@@ -54,10 +54,10 @@ func truncate(t *testing.T) {
 
 const fixturePBFPath = "../../testdata/andorra-sample.osm.pbf"
 
-// expectedPOICount is the number of nodes in the Andorra fixture that pass
+// expectedPOICount is the number of nodes and ways in the Andorra fixture that pass
 // osm.Evaluate. Locked in by inspecting the fixture; if the filter rules
 // change or the fixture is replaced, this number must be updated.
-const expectedPOICount = 976
+const expectedPOICount = 1370
 
 // pinned is a known POI from the Andorra fixture used to verify that the
 // transform -> upsert pipeline produces the expected place row.
@@ -187,6 +187,28 @@ func TestFullImport_AndorraFixture(t *testing.T) {
 			}
 		})
 	}
+
+	t.Run("way-derived place upserts with osm_type=way and no parent", func(t *testing.T) {
+		const wayID = 54858980
+		var got models.Place
+		err := db.Where("osm_id = ? AND osm_type = ?", wayID, models.OSMWay).First(&got).Error
+		if err != nil {
+			t.Fatalf("lookup osm_id=%d osm_type=way: %v", wayID, err)
+		}
+		if got.Name != "Olympia Centre" {
+			t.Errorf("name = %q, want %q", got.Name, "Olympia Centre")
+		}
+		if got.Category != models.CategoryShop {
+			t.Errorf("category = %q, want %q", got.Category, models.CategoryShop)
+		}
+		if got.ParentID != nil {
+			t.Errorf("parent_id = %v, want nil", *got.ParentID)
+		}
+		wantExternalID := fmt.Sprintf("way/%d", wayID)
+		if got.ExternalIDs["osm"].ID != wantExternalID {
+			t.Errorf("external_ids[osm].id = %q, want %q", got.ExternalIDs["osm"].ID, wantExternalID)
+		}
+	})
 
 	t.Run("re-import is idempotent on row count", func(t *testing.T) {
 		var before int64

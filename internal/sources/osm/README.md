@@ -1,13 +1,27 @@
 # internal/sources/osm
 
-Canonical source for the place registry. Reads an OpenStreetMap `.osm.pbf` file, filters nodes whose tags qualify them as POIs, transforms each into a `models.Place`, and streams them to the batcher in `cmd/ingestion`. Declares `SourceKindCanonical` so the dispatcher routes it through the canonical pipeline.
+Canonical source for the place registry. Reads an OpenStreetMap `.osm.pbf` file, filters nodes and ways whose tags qualify them as POIs, transforms each into a `models.Place`, and streams them to the batcher in `cmd/ingestion`. Declares `SourceKindCanonical` so the dispatcher routes it through the canonical pipeline.
+
+## Required preprocessing: annotated ways
+
+Raw PBF ways only store node ID references, not coordinates. Computing a way's shape requires resolving those references against actual node locations, which this package does not do itself. The input `.osm.pbf` **must** be preprocessed with [`osmium-tool`](https://osmcode.org/osmium-tool/) before ingestion:
+
+```
+osmium add-locations-to-ways <extract>.pbf -o <extract>-annotated.pbf
+```
+
+`OSM_PBF_PATH` (see `cmd/ingestion/README.md`) must point at the annotated output. Ways whose nodes aren't annotated produce an empty resolved geometry and are skipped with a warning (see Error handling) — ingestion does not detect or work around a missing preprocessing step beyond that.
+
+This is an additional flag on `osmium extract`, the step already required to scope a country/planet-wide extract down to a city or canton — not a new dependency.
 
 ## Pipeline
 
 ```mermaid
 flowchart LR
-  A[.osm.pbf file] --> B[StreamNodes<br/>paulmach/osm scanner]
-  B --> C[Evaluate tags]
+  A[.osm.pbf file] --> B[StreamElements<br/>paulmach/osm scanner]
+  B -- node --> C[Evaluate tags]
+  B -- way --> W[LineString + centroid]
+  W --> C
   C -- excluded --> D[Skip]
   C -- category, true --> E[TransformNode]
   E --> F[DeriveRank]
@@ -16,7 +30,9 @@ flowchart LR
   G --> H
 ```
 
-`StreamNodes` decodes the PBF and emits one OSM node at a time. Only matched POIs reach the sink.
+`StreamElements` decodes the PBF and emits one OSM node or way at a time; relations are skipped. Only matched POIs reach the sink.
+
+A way's representative `Lat`/`Lng` is the centroid (mean of coordinates) of its resolved `orb.LineString` — no polygon is persisted. Way-derived places are flat and independent, exactly like node-derived places: this package does not link a way (e.g. a mall) to the nodes inside it (e.g. its shops).
 
 ## Tag filtering: allowlist by design
 
@@ -35,7 +51,7 @@ Anything else is dropped.
 
 `TransformNode` builds a `models.Place` from an OSM node and a matched category. Coordinates come from the node; `Tags` is the full OSM tag map preserved as JSONB so `addr:street` and `addr:housenumber` (and anything else) remain available later — the identity matcher reads these tags directly when scoring address overlap.
 
-The natural key for upserts is `(osm_id, osm_type)`, where `osm_type` is `node`, `way`, or `relation`. Today only nodes are streamed.
+The natural key for upserts is `(osm_id, osm_type)`, where `osm_type` is `node`, `way`, or `relation`. Nodes and ways are streamed; relations (multipolygon buildings) are not handled.
 
 ## Accessibility tag mapping (v1)
 
@@ -66,6 +82,10 @@ There is no conflict detection anywhere in this mapping or downstream. The `whee
 
 Clients use the rank to prioritise results at low zoom levels — only landmarks at world view, establishments as you zoom in.
 
+## Error handling
+
+A way whose nodes aren't annotated (preprocessing step skipped, or the extract doesn't include all referenced nodes) produces an empty resolved `LineString`. `StreamElements` skips the way, logs a warning via `slog.Warn`, and does not fail the run.
+
 ## Dependency
 
-PBF decoding uses [`paulmach/osm`](https://github.com/paulmach/osm). The package wraps it just enough to stream nodes through `Sink` with a context for cancellation.
+PBF decoding uses [`paulmach/osm`](https://github.com/paulmach/osm); way geometry resolution uses its `paulmach/orb` dependency. The package wraps these just enough to stream nodes and ways through `Sink` with a context for cancellation.
