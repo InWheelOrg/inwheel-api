@@ -11,14 +11,15 @@ import (
 	"github.com/InWheelOrg/inwheel-api/pkg/models"
 )
 
-func TestTransformNode(t *testing.T) {
+func TestTransformOSMNode(t *testing.T) {
 	t.Parallel()
 	tags := map[string]string{
 		"amenity": "restaurant",
 		"name":    "Le Buffet de la Gare",
 	}
+	node := Node{ID: 123, Lat: 46.4628, Lng: 6.8417, Tags: tags}
 
-	place, _, err := TransformNode(123, 46.4628, 6.8417, tags, models.CategoryRestaurant)
+	place, _, err := TransformOSMNode(node, models.CategoryRestaurant)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -58,7 +59,27 @@ func TestTransformNode(t *testing.T) {
 	}
 }
 
-func TestTransformNode_PreservesTags(t *testing.T) {
+func TestTransformOSMWay(t *testing.T) {
+	t.Parallel()
+	tags := map[string]string{
+		"shop": "mall",
+		"name": "Centre Manor Vevey",
+	}
+	way := Way{ID: 32884427, Lat: 46.4628, Lng: 6.8417, Tags: tags}
+
+	place, _, err := TransformOSMWay(way, models.CategoryShop)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if place.OSMType != models.OSMWay {
+		t.Errorf("osm_type: got %q want %q", place.OSMType, models.OSMWay)
+	}
+	if place.ExternalIDs["osm"].ID != "way/32884427" {
+		t.Errorf("external_ids[osm].id: got %q want way/32884427", place.ExternalIDs["osm"].ID)
+	}
+}
+
+func TestTransformOSMNode_PreservesTags(t *testing.T) {
 	t.Parallel()
 	tags := map[string]string{
 		"amenity":      "restaurant",
@@ -66,8 +87,9 @@ func TestTransformNode_PreservesTags(t *testing.T) {
 		"addr:city":    "Vevey",
 		"addr:country": "CH",
 	}
+	node := Node{ID: 1, Lat: 46.4628, Lng: 6.8417, Tags: tags}
 
-	place, _, err := TransformNode(1, 46.4628, 6.8417, tags, models.CategoryRestaurant)
+	place, _, err := TransformOSMNode(node, models.CategoryRestaurant)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -79,24 +101,26 @@ func TestTransformNode_PreservesTags(t *testing.T) {
 	}
 }
 
-func TestTransformNode_EmptyCategoryReturnsError(t *testing.T) {
+func TestTransformOSMNode_EmptyCategoryReturnsError(t *testing.T) {
 	t.Parallel()
-	_, _, err := TransformNode(1, 46.4628, 6.8417, map[string]string{"amenity": "restaurant"}, "")
+	node := Node{ID: 1, Lat: 46.4628, Lng: 6.8417, Tags: map[string]string{"amenity": "restaurant"}}
+	_, _, err := TransformOSMNode(node, "")
 	if err == nil {
 		t.Fatal("expected error for empty category, got nil")
 	}
 }
 
-func TestTransformNode_ReturnsProfileWhenA11yTagsPresent(t *testing.T) {
+func TestTransformOSMNode_ReturnsProfileWhenA11yTagsPresent(t *testing.T) {
 	t.Parallel()
 	tags := map[string]string{
 		"amenity":    "cafe",
 		"name":       "Café Pascal",
 		"wheelchair": "yes",
 	}
-	place, profile, err := TransformNode(1, 46.4628, 6.8417, tags, models.CategoryCafe)
+	node := Node{ID: 1, Lat: 46.4628, Lng: 6.8417, Tags: tags}
+	place, profile, err := TransformOSMNode(node, models.CategoryCafe)
 	if err != nil {
-		t.Fatalf("TransformNode: %v", err)
+		t.Fatalf("TransformOSMNode: %v", err)
 	}
 	if place.Accessibility != nil {
 		t.Errorf("place.Accessibility should be nil; profile is returned separately")
@@ -109,15 +133,16 @@ func TestTransformNode_ReturnsProfileWhenA11yTagsPresent(t *testing.T) {
 	}
 }
 
-func TestTransformNode_ReturnsNilProfileWhenNoA11yTags(t *testing.T) {
+func TestTransformOSMNode_ReturnsNilProfileWhenNoA11yTags(t *testing.T) {
 	t.Parallel()
 	tags := map[string]string{
 		"amenity": "cafe",
 		"name":    "Café Pascal",
 	}
-	_, profile, err := TransformNode(1, 46.4628, 6.8417, tags, models.CategoryCafe)
+	node := Node{ID: 1, Lat: 46.4628, Lng: 6.8417, Tags: tags}
+	_, profile, err := TransformOSMNode(node, models.CategoryCafe)
 	if err != nil {
-		t.Fatalf("TransformNode: %v", err)
+		t.Fatalf("TransformOSMNode: %v", err)
 	}
 	if profile != nil {
 		t.Errorf("profile = %+v, want nil when no a11y tags", profile)

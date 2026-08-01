@@ -33,7 +33,7 @@ func (s *Source) FullImport(ctx context.Context, sink sources.Sink) error {
 
 	var processed, emitted, skipped int
 
-	err = StreamNodes(ctx, f, func(node Node) error {
+	err = StreamElements(ctx, f, func(node Node) error {
 		processed++
 		if processed%10000 == 0 {
 			slog.Info("source progress",
@@ -48,12 +48,33 @@ func (s *Source) FullImport(ctx context.Context, sink sources.Sink) error {
 			return nil
 		}
 
-		p, profile, err := TransformNode(node.ID, node.Lat, node.Lng, node.Tags, category)
+		p, profile, err := TransformOSMNode(node, category)
 		if err != nil {
 			skipped++
 			slog.Warn("skipping node",
 				"source", "osm",
 				"node_id", node.ID,
+				"error", err,
+			)
+			return nil
+		}
+
+		emitted++
+		return sink(ctx, *p, profile)
+	}, func(way Way) error {
+		processed++
+
+		category, ok := Evaluate(way.Tags)
+		if !ok {
+			return nil
+		}
+
+		p, profile, err := TransformOSMWay(way, category)
+		if err != nil {
+			skipped++
+			slog.Warn("skipping way",
+				"source", "osm",
+				"way_id", way.ID,
 				"error", err,
 			)
 			return nil

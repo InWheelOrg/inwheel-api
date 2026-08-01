@@ -8,7 +8,7 @@ All configuration comes from environment variables.
 
 | Variable | Default | Notes |
 |---|---|---|
-| `OSM_PBF_PATH` | — | Required. Path to the `.osm.pbf` file. |
+| `OSM_PBF_PATH` | — | Required. Path to the `.osm.pbf` file. Must be preprocessed with `osmium add-locations-to-ways` so way geometry can be resolved — see `internal/sources/osm/README.md`. |
 | `DB_HOST` | `localhost` | |
 | `DB_PORT` | `5432` | |
 | `DB_USER` | `postgres` | |

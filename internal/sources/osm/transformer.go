@@ -11,12 +11,23 @@ import (
 	"github.com/InWheelOrg/inwheel-api/pkg/models"
 )
 
-// TransformNode converts a filtered OSM node into a models.Place and an optional
+// TransformOSMNode converts a filtered OSM node into a models.Place and an optional
+// AccessibilityProfile. The category must come from a prior call to Evaluate.
+func TransformOSMNode(node Node, category models.Category) (*models.Place, *models.AccessibilityProfile, error) {
+	return transform(node.ID, node.Lat, node.Lng, node.Tags, category, models.OSMNode)
+}
+
+// TransformOSMWay converts a filtered OSM way into a models.Place and an optional
+// AccessibilityProfile. The category must come from a prior call to Evaluate.
+func TransformOSMWay(way Way, category models.Category) (*models.Place, *models.AccessibilityProfile, error) {
+	return transform(way.ID, way.Lat, way.Lng, way.Tags, category, models.OSMWay)
+}
+
+// transform converts a filtered OSM node or way into a models.Place and an optional
 // AccessibilityProfile. Profile is nil when no accessibility tags are present.
-// The category must come from a prior call to Evaluate.
-func TransformNode(osmID int64, lat, lng float64, tags map[string]string, category models.Category) (*models.Place, *models.AccessibilityProfile, error) {
+func transform(osmID int64, lat, lng float64, tags map[string]string, category models.Category, osmType models.OSMType) (*models.Place, *models.AccessibilityProfile, error) {
 	if category == "" {
-		return nil, nil, fmt.Errorf("transform: category is empty for node %d", osmID)
+		return nil, nil, fmt.Errorf("transform: category is empty for %s %d", osmType, osmID)
 	}
 
 	placeTags := make(models.PlaceTags, len(tags))
@@ -26,7 +37,7 @@ func TransformNode(osmID int64, lat, lng float64, tags map[string]string, catego
 
 	place := &models.Place{
 		OSMID:    osmID,
-		OSMType:  models.OSMNode,
+		OSMType:  osmType,
 		Name:     tags["name"],
 		Lat:      lat,
 		Lng:      lng,
@@ -35,7 +46,7 @@ func TransformNode(osmID int64, lat, lng float64, tags map[string]string, catego
 		Tags:     placeTags,
 		ExternalIDs: models.ExternalIDs{
 			"osm": models.ExternalRef{
-				ID:         fmt.Sprintf("node/%d", osmID),
+				ID:         fmt.Sprintf("%s/%d", osmType, osmID),
 				Confidence: 1.0,
 			},
 		},
