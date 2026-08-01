@@ -54,8 +54,9 @@ type Server struct {
 	db         *gorm.DB
 	places     *place.Repository
 	engine     *a11y.Engine
-	regLimiter *middleware.RateLimiter
-	keyLimiter *middleware.RateLimiter
+	regLimiter  *middleware.RateLimiter
+	keyLimiter  *middleware.RateLimiter
+	readLimiter *middleware.RateLimiter
 }
 
 func main() {
@@ -95,11 +96,12 @@ func main() {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 
 	srv := &Server{
-		db:         gormDB,
-		places:     place.NewRepository(gormDB),
-		engine:     &a11y.Engine{},
-		regLimiter: middleware.NewRateLimiter(ctx, rate.Every(20*time.Minute), 3),
-		keyLimiter: middleware.NewRateLimiter(ctx, rate.Every(time.Second), 60),
+		db:          gormDB,
+		places:      place.NewRepository(gormDB),
+		engine:      &a11y.Engine{},
+		regLimiter:  middleware.NewRateLimiter(ctx, rate.Every(20*time.Minute), 3),
+		keyLimiter:  middleware.NewRateLimiter(ctx, rate.Every(time.Second), 60),
+		readLimiter: middleware.NewRateLimiter(ctx, rate.Limit(20), 20),
 	}
 
 	// v1Mux holds only /v1/* routes so the spec validator only wraps those.
@@ -138,6 +140,7 @@ func main() {
 			srv.validationErrorHandler(w, r, err)
 		},
 	})(v1Mux)
+	v1Handler = middleware.PublicRateLimit(srv.readLimiter)(v1Handler)
 	v1Handler = middleware.CORS(getEnv("CORS_ALLOWED_ORIGIN", ""))(v1Handler)
 
 	mux := http.NewServeMux()
