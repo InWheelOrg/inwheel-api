@@ -7,16 +7,21 @@ package middleware
 
 import (
 	"encoding/json"
+	"log/slog"
 	"net/http"
+	"strconv"
 )
 
 func PublicRateLimit(rl *RateLimiter) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			if r.Header.Get("X-API-Key") == "" && !rl.Allow(ClientIP(r)) {
+			if APIKeyIDFromCtx(r.Context()) == "" && !rl.Allow(ClientIP(r)) {
 				w.Header().Set("Content-Type", "application/json")
+				w.Header().Set("Retry-After", strconv.Itoa(rl.RetryAfterSeconds()))
 				w.WriteHeader(http.StatusTooManyRequests)
-				json.NewEncoder(w).Encode(map[string]string{"error": "rate limit exceeded"})
+				if err := json.NewEncoder(w).Encode(map[string]string{"error": "rate limit exceeded"}); err != nil {
+					slog.Error("PublicRateLimit: encode failed", "error", err)
+				}
 				return
 			}
 			next.ServeHTTP(w, r)

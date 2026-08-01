@@ -104,44 +104,11 @@ func main() {
 		readLimiter: middleware.NewRateLimiter(ctx, rate.Limit(20), 20),
 	}
 
-	// v1Mux holds only /v1/* routes so the spec validator only wraps those.
-	// Unversioned routes (/healthz, /readyz, /openapi.yaml) are registered on
-	// the outer mux and never go through the validator.
-	v1Mux := http.NewServeMux()
-
-	swagger, err := apiv1.GetSpec()
+	v1Handler, err := buildV1Handler(srv, getEnv("CORS_ALLOWED_ORIGIN", ""))
 	if err != nil {
-		slog.Error("Failed to load OpenAPI spec", "error", err)
+		slog.Error("Failed to build v1 handler", "error", err)
 		os.Exit(1)
 	}
-
-	strictHandler := apiv1.NewStrictHandlerWithOptions(srv, []apiv1.StrictMiddlewareFunc{injectRequest()}, apiv1.StrictHTTPServerOptions{
-		RequestErrorHandlerFunc:  srv.validationErrorHandler,
-		ResponseErrorHandlerFunc: func(w http.ResponseWriter, _ *http.Request, err error) {
-			slog.Error("handler error", "error", err)
-			writeJSON(w, map[string]string{"error": "internal server error"}, http.StatusInternalServerError)
-		},
-	})
-	apiv1.HandlerWithOptions(strictHandler, apiv1.StdHTTPServerOptions{
-		BaseURL:          "/v1",
-		BaseRouter:       v1Mux,
-		ErrorHandlerFunc: srv.validationErrorHandler,
-		Middlewares: []apiv1.MiddlewareFunc{
-			bodySizeLimiter(1 << 20),
-		},
-	})
-
-	v1Handler := nethttp_middleware.OapiRequestValidatorWithOptions(swagger, &nethttp_middleware.Options{
-		SilenceServersWarning: true,
-		Options: openapi3filter.Options{
-			AuthenticationFunc: srv.authenticate,
-		},
-		ErrorHandlerWithOpts: func(_ context.Context, err error, w http.ResponseWriter, r *http.Request, _ nethttp_middleware.ErrorHandlerOpts) {
-			srv.validationErrorHandler(w, r, err)
-		},
-	})(v1Mux)
-	v1Handler = middleware.PublicRateLimit(srv.readLimiter)(v1Handler)
-	v1Handler = middleware.CORS(getEnv("CORS_ALLOWED_ORIGIN", ""))(v1Handler)
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /healthz", srv.handleHealthz)
@@ -178,6 +145,44 @@ func main() {
 		os.Exit(1)
 	}
 	cancel()
+}
+
+func buildV1Handler(srv *Server, corsOrigin string) (http.Handler, error) {
+	v1Mux := http.NewServeMux()
+
+	swagger, err := apiv1.GetSpec()
+	if err != nil {
+		return nil, err
+	}
+
+	strictHandler := apiv1.NewStrictHandlerWithOptions(srv, []apiv1.StrictMiddlewareFunc{injectRequest()}, apiv1.StrictHTTPServerOptions{
+		RequestErrorHandlerFunc:  srv.validationErrorHandler,
+		ResponseErrorHandlerFunc: func(w http.ResponseWriter, _ *http.Request, err error) {
+			slog.Error("handler error", "error", err)
+			writeJSON(w, map[string]string{"error": "internal server error"}, http.StatusInternalServerError)
+		},
+	})
+	apiv1.HandlerWithOptions(strictHandler, apiv1.StdHTTPServerOptions{
+		BaseURL:          "/v1",
+		BaseRouter:       v1Mux,
+		ErrorHandlerFunc: srv.validationErrorHandler,
+		Middlewares: []apiv1.MiddlewareFunc{
+			bodySizeLimiter(1 << 20),
+		},
+	})
+
+	v1Handler := nethttp_middleware.OapiRequestValidatorWithOptions(swagger, &nethttp_middleware.Options{
+		SilenceServersWarning: true,
+		Options: openapi3filter.Options{
+			AuthenticationFunc: srv.authenticate,
+		},
+		ErrorHandlerWithOpts: func(_ context.Context, err error, w http.ResponseWriter, r *http.Request, _ nethttp_middleware.ErrorHandlerOpts) {
+			srv.validationErrorHandler(w, r, err)
+		},
+	})(middleware.PublicRateLimit(srv.readLimiter)(v1Mux))
+	v1Handler = middleware.CORS(corsOrigin)(v1Handler)
+
+	return v1Handler, nil
 }
 
 func bodySizeLimiter(maxBytes int64) apiv1.MiddlewareFunc {
