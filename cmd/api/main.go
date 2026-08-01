@@ -138,6 +138,7 @@ func main() {
 			srv.validationErrorHandler(w, r, err)
 		},
 	})(v1Mux)
+	v1Handler = middleware.CORS(getEnv("CORS_ALLOWED_ORIGIN", ""))(v1Handler)
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /healthz", srv.handleHealthz)
