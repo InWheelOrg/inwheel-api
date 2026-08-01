@@ -10,3 +10,4 @@ docs/superpowers/
 .claude/
 !.claude/settings.json
 graphify-out/
+supabase/.temp/
