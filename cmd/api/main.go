@@ -14,6 +14,7 @@ import (
 	"os"
 	"os/signal"
 	"strconv"
+	"strings"
 	"syscall"
 	"time"
 
@@ -194,13 +195,24 @@ func bodySizeLimiter(maxBytes int64) apiv1.MiddlewareFunc {
 	}
 }
 
+func escapeLikePattern(s string) string {
+	r := strings.NewReplacer(`\`, `\\`, `%`, `\%`, `_`, `\_`)
+	return r.Replace(s)
+}
+
 func (s *Server) ListPlaces(ctx context.Context, request apiv1.ListPlacesRequestObject) (apiv1.ListPlacesResponseObject, error) {
 	q := request.Params
+
+	var trimmedQ *string
+	if q.Q != nil {
+		t := strings.TrimSpace(*q.Q)
+		trimmedQ = &t
+	}
 
 	if errs := validation.PlacesQuery(validation.PlacesQueryParams{
 		Lng: q.Lng, Lat: q.Lat, Radius: q.Radius,
 		MinLng: q.MinLng, MinLat: q.MinLat, MaxLng: q.MaxLng, MaxLat: q.MaxLat,
-		Cursor: q.Cursor,
+		Cursor: q.Cursor, Q: trimmedQ,
 	}); len(errs) > 0 {
 		return apiv1.ListPlaces400JSONResponse(validationError(errs)), nil
 	}
@@ -216,6 +228,10 @@ func (s *Server) ListPlaces(ctx context.Context, request apiv1.ListPlacesRequest
 		if cursorTS, cursorID, err := pagination.Decode(*q.Cursor); err == nil {
 			scope = scope.Where("places.updated_at < ? OR (places.updated_at = ? AND places.id > ?)", cursorTS, cursorTS, cursorID)
 		}
+	}
+
+	if trimmedQ != nil {
+		scope = scope.Where("name ILIKE ? ESCAPE '\\'", "%"+escapeLikePattern(*trimmedQ)+"%")
 	}
 
 	var places []models.Place
