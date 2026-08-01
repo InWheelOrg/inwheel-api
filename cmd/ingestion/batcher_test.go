@@ -15,6 +15,7 @@ import (
 )
 
 func TestBatcher_FlushesWhenFull(t *testing.T) {
+	t.Parallel()
 	var flushes [][]models.Place
 	b := &batcher{
 		size: 2,
@@ -45,6 +46,7 @@ func TestBatcher_FlushesWhenFull(t *testing.T) {
 }
 
 func TestBatcher_FlushNow_DrainsPartialBuffer(t *testing.T) {
+	t.Parallel()
 	var flushes [][]models.Place
 	b := &batcher{
 		size: 10,
@@ -78,6 +80,7 @@ func TestBatcher_FlushNow_DrainsPartialBuffer(t *testing.T) {
 }
 
 func TestBatcher_FlushNow_NoOpWhenEmpty(t *testing.T) {
+	t.Parallel()
 	called := false
 	b := &batcher{
 		size: 10,
@@ -95,6 +98,7 @@ func TestBatcher_FlushNow_NoOpWhenEmpty(t *testing.T) {
 }
 
 func TestBatcher_PropagatesFlushError(t *testing.T) {
+	t.Parallel()
 	sentinel := errors.New("boom")
 	b := &batcher{
 		size: 1,
@@ -109,6 +113,7 @@ func TestBatcher_PropagatesFlushError(t *testing.T) {
 }
 
 func TestBatcher_TouchedIDsAccumulateAcrossFlushes(t *testing.T) {
+	t.Parallel()
 	flushed := [][]models.Place{}
 	b := &batcher{
 		size: 2,
@@ -147,6 +152,7 @@ func TestBatcher_TouchedIDsAccumulateAcrossFlushes(t *testing.T) {
 }
 
 func TestBatcher_WritesProfileWhenAttached(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	var captured []capturedProfile
 	b := &batcher{
@@ -185,6 +191,7 @@ func TestBatcher_WritesProfileWhenAttached(t *testing.T) {
 }
 
 func TestBatcher_PlaceHasNoAccessibilityFieldInFlush(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	var batchSeen []models.Place
 	b := &batcher{

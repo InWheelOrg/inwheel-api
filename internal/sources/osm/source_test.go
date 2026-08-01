@@ -25,6 +25,7 @@ func requireFixture(t *testing.T) {
 }
 
 func TestSource_Name(t *testing.T) {
+	t.Parallel()
 	s := &Source{PBFPath: "irrelevant"}
 	if got := s.Name(); got != "osm" {
 		t.Errorf("Name() = %q, want %q", got, "osm")
@@ -32,10 +33,12 @@ func TestSource_Name(t *testing.T) {
 }
 
 func TestSource_ImplementsFullImporter(t *testing.T) {
+	t.Parallel()
 	var _ sources.FullImporter = (*Source)(nil)
 }
 
 func TestSource_FullImport_OpenError(t *testing.T) {
+	t.Parallel()
 	s := &Source{PBFPath: "/no/such/file.pbf"}
 	err := s.FullImport(context.Background(), func(context.Context, models.Place, *models.AccessibilityProfile) error { return nil })
 	if err == nil {
@@ -44,6 +47,7 @@ func TestSource_FullImport_OpenError(t *testing.T) {
 }
 
 func TestSource_FullImport_EmitsFromFixture(t *testing.T) {
+	t.Parallel()
 	requireFixture(t)
 	s := &Source{PBFPath: fixturePBF}
 
@@ -63,6 +67,7 @@ func TestSource_FullImport_EmitsFromFixture(t *testing.T) {
 }
 
 func TestSource_FullImport_PropagatesSinkError(t *testing.T) {
+	t.Parallel()
 	requireFixture(t)
 	s := &Source{PBFPath: fixturePBF}
 

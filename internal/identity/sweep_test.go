@@ -49,6 +49,7 @@ func (f *fakeSweepRepo) BumpAttempts(_ context.Context, queueID int64, lastAttem
 }
 
 func TestSweep_EmptyTouchedIDsDoesNothing(t *testing.T) {
+	t.Parallel()
 	queue := &fakeSweepRepo{}
 	cands := &candidatesRepo{}
 	attach := &fakeAttachRepo{}
@@ -66,6 +67,7 @@ func TestSweep_EmptyTouchedIDsDoesNothing(t *testing.T) {
 }
 
 func TestSweep_PassesRadiusToRepo(t *testing.T) {
+	t.Parallel()
 	queue := &fakeSweepRepo{rows: nil}
 	s := &identity.Sweeper{
 		Candidates: &candidatesRepo{},
@@ -83,6 +85,7 @@ func TestSweep_PassesRadiusToRepo(t *testing.T) {
 }
 
 func TestSweep_ConfidentAttachesAndDeletes(t *testing.T) {
+	t.Parallel()
 	clock := time.Date(2026, 6, 6, 12, 0, 0, 0, time.UTC)
 	queue := &fakeSweepRepo{rows: []models.UnmatchedExternal{
 		{
@@ -125,6 +128,7 @@ func TestSweep_ConfidentAttachesAndDeletes(t *testing.T) {
 }
 
 func TestSweep_NoMatchBumpsAttempts(t *testing.T) {
+	t.Parallel()
 	clock := time.Date(2026, 6, 6, 12, 0, 0, 0, time.UTC)
 	queue := &fakeSweepRepo{rows: []models.UnmatchedExternal{
 		{
@@ -156,6 +160,7 @@ func TestSweep_NoMatchBumpsAttempts(t *testing.T) {
 }
 
 func TestSweep_FindErrorIsFatal(t *testing.T) {
+	t.Parallel()
 	wantErr := errors.New("db down")
 	queue := &fakeSweepRepo{findErr: wantErr}
 	s := &identity.Sweeper{
@@ -171,6 +176,7 @@ func TestSweep_FindErrorIsFatal(t *testing.T) {
 }
 
 func TestSweep_MatchErrorIsNonFatal(t *testing.T) {
+	t.Parallel()
 	wantErr := errors.New("transient")
 	queue := &fakeSweepRepo{rows: []models.UnmatchedExternal{
 		{ID: 1, Source: "wheelmap", SourceID: "a", Lat: 46.4628, Lng: 6.8417, Category: "cafe"},
@@ -191,6 +197,7 @@ func TestSweep_MatchErrorIsNonFatal(t *testing.T) {
 }
 
 func TestSweep_AttachFailureSkipsDelete(t *testing.T) {
+	t.Parallel()
 	queue := &fakeSweepRepo{rows: []models.UnmatchedExternal{
 		{ID: 1, Source: "wheelmap", SourceID: "a",
 			Name: "Pascal", Lat: 46.4628, Lng: 6.8417, Category: "cafe",
@@ -215,6 +222,7 @@ func TestSweep_AttachFailureSkipsDelete(t *testing.T) {
 }
 
 func TestSweep_LowConfidenceAttachesAndDeletes(t *testing.T) {
+	t.Parallel()
 	clock := time.Date(2026, 6, 6, 12, 0, 0, 0, time.UTC)
 	queue := &fakeSweepRepo{rows: []models.UnmatchedExternal{
 		{
@@ -251,6 +259,7 @@ func TestSweep_LowConfidenceAttachesAndDeletes(t *testing.T) {
 }
 
 func TestSweep_DeleteFailureCountsAsError(t *testing.T) {
+	t.Parallel()
 	queue := &fakeSweepRepo{
 		rows: []models.UnmatchedExternal{
 			{ID: 1, Source: "wheelmap", SourceID: "a",
@@ -278,6 +287,7 @@ func TestSweep_DeleteFailureCountsAsError(t *testing.T) {
 }
 
 func TestSweep_BumpFailureCountsAsError(t *testing.T) {
+	t.Parallel()
 	queue := &fakeSweepRepo{
 		rows: []models.UnmatchedExternal{
 			{ID: 9, Source: "wheelmap", SourceID: "ghost",

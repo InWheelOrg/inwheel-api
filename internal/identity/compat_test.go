@@ -14,6 +14,7 @@ import (
 )
 
 func TestCompatible(t *testing.T) {
+	t.Parallel()
 	cases := []struct {
 		name string
 		in   models.Category

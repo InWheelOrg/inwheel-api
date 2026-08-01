@@ -71,6 +71,7 @@ func loadFixtures(t *testing.T) []fixture {
 }
 
 func TestMatch_NoCandidatesReturnsNoMatch(t *testing.T) {
+	t.Parallel()
 	repo := &fakeRepo{candidates: nil}
 	r := identity.Record{
 		Name:     "Pascal",
@@ -94,6 +95,7 @@ func TestMatch_NoCandidatesReturnsNoMatch(t *testing.T) {
 }
 
 func TestMatch_PassesCompatibleCategoriesToRepo(t *testing.T) {
+	t.Parallel()
 	repo := &fakeRepo{candidates: nil}
 	r := identity.Record{
 		Name:     "Pascal",
@@ -116,6 +118,7 @@ func TestMatch_PassesCompatibleCategoriesToRepo(t *testing.T) {
 }
 
 func TestMatch_PropagatesRepoError(t *testing.T) {
+	t.Parallel()
 	wantErr := errors.New("db down")
 	repo := &fakeRepo{err: wantErr}
 	r := identity.Record{Lat: 46.4628, Lng: 6.8417, Category: models.CategoryCafe}
@@ -126,6 +129,7 @@ func TestMatch_PropagatesRepoError(t *testing.T) {
 }
 
 func TestMatch_ConfidentAttachOnHighScore(t *testing.T) {
+	t.Parallel()
 	// Coincident point, identical name, matching address → score = 1.0
 	repo := &fakeRepo{candidates: []models.Place{
 		{ID: "p1", Name: "Pascal", Lat: 46.4628, Lng: 6.8417, Category: models.CategoryCafe,
@@ -151,6 +155,7 @@ func TestMatch_ConfidentAttachOnHighScore(t *testing.T) {
 }
 
 func TestMatch_LowConfidenceAttachInMiddleBand(t *testing.T) {
+	t.Parallel()
 	// ~25 m offset (distance score ~0.5), name fully overlaps (1.0), no address.
 	// Score with redistribution: 0.5556*0.5 + 0.4444*1.0 = 0.7222 → low confidence.
 	repo := &fakeRepo{candidates: []models.Place{
@@ -173,6 +178,7 @@ func TestMatch_LowConfidenceAttachInMiddleBand(t *testing.T) {
 }
 
 func TestMatch_BelowFloorReturnsNoMatch(t *testing.T) {
+	t.Parallel()
 	// ~40 m offset (distance ~0.2), name no overlap, no address.
 	// Score with redistribution: 0.5556*0.2 + 0.4444*0 = 0.111 → below floor.
 	repo := &fakeRepo{candidates: []models.Place{
@@ -192,6 +198,7 @@ func TestMatch_BelowFloorReturnsNoMatch(t *testing.T) {
 }
 
 func TestMatch_PicksHighestScoringCandidate(t *testing.T) {
+	t.Parallel()
 	// Two candidates at the same point. One has a matching name, the other doesn't.
 	repo := &fakeRepo{candidates: []models.Place{
 		{ID: "p1", Name: "Roma", Lat: 46.4628, Lng: 6.8417, Category: models.CategoryCafe},
@@ -208,6 +215,7 @@ func TestMatch_PicksHighestScoringCandidate(t *testing.T) {
 }
 
 func TestMatch_Fixtures(t *testing.T) {
+	t.Parallel()
 	fixtures := loadFixtures(t)
 
 	var correct, total int

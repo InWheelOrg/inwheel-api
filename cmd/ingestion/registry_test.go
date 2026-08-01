@@ -13,6 +13,7 @@ import (
 )
 
 func TestBuildSource_OSMHappyPath(t *testing.T) {
+	t.Parallel()
 	cfg := config{OSMPBFPath: "/tmp/x.pbf"}
 	src, err := buildSource("osm", cfg)
 	if err != nil {
@@ -28,6 +29,7 @@ func TestBuildSource_OSMHappyPath(t *testing.T) {
 }
 
 func TestBuildSource_OSMMissingConfig(t *testing.T) {
+	t.Parallel()
 	_, err := buildSource("osm", config{})
 	if err == nil {
 		t.Fatal("expected error for missing OSM_PBF_PATH, got nil")
@@ -38,6 +40,7 @@ func TestBuildSource_OSMMissingConfig(t *testing.T) {
 }
 
 func TestBuildSource_UnknownSource(t *testing.T) {
+	t.Parallel()
 	_, err := buildSource("wheelmap", config{})
 	if err == nil {
 		t.Fatal("expected error for unknown source, got nil")

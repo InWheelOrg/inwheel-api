@@ -15,7 +15,6 @@ import (
 
 	"github.com/InWheelOrg/inwheel-api/internal/identity"
 	"github.com/InWheelOrg/inwheel-api/internal/place"
-	"github.com/InWheelOrg/inwheel-api/internal/testhelpers"
 	"github.com/InWheelOrg/inwheel-api/internal/unmatched"
 	"github.com/InWheelOrg/inwheel-api/pkg/models"
 )
@@ -25,12 +24,9 @@ import (
 // Resolver ever drops a matchable column on enqueue, this test fails because
 // the Sweeper rebuilds an empty Record and scores 0 against the seeded place.
 func TestResolverEnqueueIsConsumableBySweep(t *testing.T) {
+	t.Cleanup(func() { truncate(t) })
 	ctx := context.Background()
-	db, cleanup, err := testhelpers.StartPostgres(ctx)
-	if err != nil {
-		t.Fatalf("start postgres: %v", err)
-	}
-	defer cleanup()
+	db := testDB
 
 	placesRepo := place.NewRepository(db)
 	queueRepo := unmatched.NewRepository(db)

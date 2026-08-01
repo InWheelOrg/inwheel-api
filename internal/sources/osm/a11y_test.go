@@ -14,6 +14,7 @@ import (
 func boolPtr(b bool) *bool { return &b }
 
 func TestMapTagsToProfile_ReturnsNilWhenNoA11ySignal(t *testing.T) {
+	t.Parallel()
 	got := mapTagsToProfile(map[string]string{
 		"amenity": "cafe",
 		"name":    "Café Pascal",
@@ -24,6 +25,7 @@ func TestMapTagsToProfile_ReturnsNilWhenNoA11ySignal(t *testing.T) {
 }
 
 func TestMapTagsToProfile_WheelchairValues(t *testing.T) {
+	t.Parallel()
 	cases := []struct {
 		tag       string
 		wantValue string
@@ -54,6 +56,7 @@ func TestMapTagsToProfile_WheelchairValues(t *testing.T) {
 }
 
 func TestMapTagsToProfile_UnknownWheelchairTagSkipped(t *testing.T) {
+	t.Parallel()
 	got := mapTagsToProfile(map[string]string{"wheelchair": "permissive"})
 	if got != nil {
 		t.Errorf("unknown wheelchair value should not emit a profile, got %+v", got)
@@ -61,6 +64,7 @@ func TestMapTagsToProfile_UnknownWheelchairTagSkipped(t *testing.T) {
 }
 
 func TestMapTagsToProfile_ComponentOnlyNoSourceReport(t *testing.T) {
+	t.Parallel()
 	got := mapTagsToProfile(map[string]string{"toilets:wheelchair": "yes"})
 	if got == nil {
 		t.Fatalf("expected profile when toilet tag present")
@@ -74,6 +78,7 @@ func TestMapTagsToProfile_ComponentOnlyNoSourceReport(t *testing.T) {
 }
 
 func TestMapTagsToProfile_Restroom(t *testing.T) {
+	t.Parallel()
 	t.Run("yes sets IsAccessible true", func(t *testing.T) {
 		got := mapTagsToProfile(map[string]string{"toilets:wheelchair": "yes"})
 		if got == nil || got.Restroom == nil {
@@ -95,6 +100,7 @@ func TestMapTagsToProfile_Restroom(t *testing.T) {
 }
 
 func TestMapTagsToProfile_Parking(t *testing.T) {
+	t.Parallel()
 	t.Run("capacity:disabled positive", func(t *testing.T) {
 		got := mapTagsToProfile(map[string]string{"capacity:disabled": "3"})
 		if got == nil || got.Parking == nil {
@@ -131,6 +137,7 @@ func TestMapTagsToProfile_Parking(t *testing.T) {
 }
 
 func TestMapTagsToProfile_Entrance(t *testing.T) {
+	t.Parallel()
 	t.Run("automatic_door=button sets door type", func(t *testing.T) {
 		got := mapTagsToProfile(map[string]string{"automatic_door": "button"})
 		if got == nil || got.Entrance == nil {
@@ -200,6 +207,7 @@ func TestMapTagsToProfile_Entrance(t *testing.T) {
 }
 
 func TestMapTagsToProfile_Elevator(t *testing.T) {
+	t.Parallel()
 	got := mapTagsToProfile(map[string]string{"elevator": "yes"})
 	if got == nil || got.Elevator == nil {
 		t.Fatal("expected elevator")
@@ -207,6 +215,7 @@ func TestMapTagsToProfile_Elevator(t *testing.T) {
 }
 
 func TestMapTagsToProfile_AggregatesAllComponents(t *testing.T) {
+	t.Parallel()
 	got := mapTagsToProfile(map[string]string{
 		"wheelchair":         "yes",
 		"toilets:wheelchair": "yes",

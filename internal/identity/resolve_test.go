@@ -54,6 +54,7 @@ func (c *candidatesRepo) FindCandidates(_ context.Context, _, _, _ float64, _ []
 func fixedClock(t time.Time) func() time.Time { return func() time.Time { return t } }
 
 func TestResolve_ConfidentAttachesExternalRef(t *testing.T) {
+	t.Parallel()
 	clock := time.Date(2026, 6, 5, 12, 0, 0, 0, time.UTC)
 	attach := &fakeAttachRepo{}
 	enqueue := &fakeEnqueueRepo{}
@@ -98,6 +99,7 @@ func TestResolve_ConfidentAttachesExternalRef(t *testing.T) {
 }
 
 func TestResolve_LowConfidenceAttachesWithLowScore(t *testing.T) {
+	t.Parallel()
 	clock := time.Date(2026, 6, 5, 12, 0, 0, 0, time.UTC)
 	attach := &fakeAttachRepo{}
 	enqueue := &fakeEnqueueRepo{}
@@ -137,6 +139,7 @@ func TestResolve_LowConfidenceAttachesWithLowScore(t *testing.T) {
 }
 
 func TestResolve_NoMatchEnqueues(t *testing.T) {
+	t.Parallel()
 	clock := time.Date(2026, 6, 5, 12, 0, 0, 0, time.UTC)
 	attach := &fakeAttachRepo{}
 	enqueue := &fakeEnqueueRepo{}
@@ -195,6 +198,7 @@ func TestResolve_NoMatchEnqueues(t *testing.T) {
 }
 
 func TestResolve_NoMatchNilPayloadDefaultsToEmptyObject(t *testing.T) {
+	t.Parallel()
 	enqueue := &fakeEnqueueRepo{}
 	r := &identity.Resolver{
 		Candidates: &candidatesRepo{candidates: nil},
@@ -219,6 +223,7 @@ func TestResolve_NoMatchNilPayloadDefaultsToEmptyObject(t *testing.T) {
 }
 
 func TestResolve_NilClockDefaultsToTimeNow(t *testing.T) {
+	t.Parallel()
 	attach := &fakeAttachRepo{}
 	enqueue := &fakeEnqueueRepo{}
 	cands := &candidatesRepo{candidates: []models.Place{
@@ -246,6 +251,7 @@ func TestResolve_NilClockDefaultsToTimeNow(t *testing.T) {
 }
 
 func TestResolve_PropagatesMatchError(t *testing.T) {
+	t.Parallel()
 	wantErr := errors.New("db down")
 	r := &identity.Resolver{
 		Candidates: &candidatesRepo{err: wantErr},
@@ -265,6 +271,7 @@ func TestResolve_PropagatesMatchError(t *testing.T) {
 }
 
 func TestResolve_PropagatesAttachError(t *testing.T) {
+	t.Parallel()
 	wantErr := errors.New("attach failed")
 	cands := &candidatesRepo{candidates: []models.Place{
 		{ID: "p1", Name: "Pascal", Lat: 46.4628, Lng: 6.8417, Category: models.CategoryCafe},
@@ -284,6 +291,7 @@ func TestResolve_PropagatesAttachError(t *testing.T) {
 }
 
 func TestResolve_PropagatesEnqueueError(t *testing.T) {
+	t.Parallel()
 	wantErr := errors.New("enqueue failed")
 	r := &identity.Resolver{
 		Candidates: &candidatesRepo{candidates: nil},

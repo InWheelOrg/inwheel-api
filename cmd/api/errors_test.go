@@ -26,6 +26,7 @@ func newErrorHandlerServer(t *testing.T) *Server {
 }
 
 func TestValidationErrorHandler_FormatsFieldErrors(t *testing.T) {
+	t.Parallel()
 	srv := newErrorHandlerServer(t)
 	w := httptest.NewRecorder()
 	r := httptest.NewRequest(http.MethodGet, "/", nil)
@@ -64,6 +65,7 @@ func TestValidationErrorHandler_FormatsFieldErrors(t *testing.T) {
 }
 
 func TestValidationErrorHandler_SecurityError_Unauthorized(t *testing.T) {
+	t.Parallel()
 	srv := newErrorHandlerServer(t)
 	w := httptest.NewRecorder()
 	r := httptest.NewRequest(http.MethodGet, "/", nil)
@@ -87,6 +89,7 @@ func TestValidationErrorHandler_SecurityError_Unauthorized(t *testing.T) {
 }
 
 func TestValidationErrorHandler_SecurityError_RateLimited(t *testing.T) {
+	t.Parallel()
 	ctx, cancel := context.WithCancel(context.Background())
 	t.Cleanup(cancel)
 	srv := &Server{

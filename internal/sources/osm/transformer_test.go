@@ -12,6 +12,7 @@ import (
 )
 
 func TestTransformNode(t *testing.T) {
+	t.Parallel()
 	tags := map[string]string{
 		"amenity": "restaurant",
 		"name":    "Le Buffet de la Gare",
@@ -58,6 +59,7 @@ func TestTransformNode(t *testing.T) {
 }
 
 func TestTransformNode_PreservesTags(t *testing.T) {
+	t.Parallel()
 	tags := map[string]string{
 		"amenity":      "restaurant",
 		"name":         "Le Buffet de la Gare",
@@ -78,6 +80,7 @@ func TestTransformNode_PreservesTags(t *testing.T) {
 }
 
 func TestTransformNode_EmptyCategoryReturnsError(t *testing.T) {
+	t.Parallel()
 	_, _, err := TransformNode(1, 46.4628, 6.8417, map[string]string{"amenity": "restaurant"}, "")
 	if err == nil {
 		t.Fatal("expected error for empty category, got nil")
@@ -85,6 +88,7 @@ func TestTransformNode_EmptyCategoryReturnsError(t *testing.T) {
 }
 
 func TestTransformNode_ReturnsProfileWhenA11yTagsPresent(t *testing.T) {
+	t.Parallel()
 	tags := map[string]string{
 		"amenity":    "cafe",
 		"name":       "Café Pascal",
@@ -106,6 +110,7 @@ func TestTransformNode_ReturnsProfileWhenA11yTagsPresent(t *testing.T) {
 }
 
 func TestTransformNode_ReturnsNilProfileWhenNoA11yTags(t *testing.T) {
+	t.Parallel()
 	tags := map[string]string{
 		"amenity": "cafe",
 		"name":    "Café Pascal",
@@ -120,6 +125,7 @@ func TestTransformNode_ReturnsNilProfileWhenNoA11yTags(t *testing.T) {
 }
 
 func TestDeriveRank(t *testing.T) {
+	t.Parallel()
 	cases := []struct {
 		name     string
 		category models.Category
