@@ -12,3 +12,4 @@ docs/superpowers/
 !.claude/settings.json
 graphify-out/
 supabase/.temp/
+coverage.out

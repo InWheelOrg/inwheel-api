@@ -24,7 +24,7 @@ jobs:
         with:
           go-version-file: go.mod
       - name: Build
-        run: go build ./...
+        run: make build
 
   lint:
     name: Lint
@@ -50,11 +50,10 @@ jobs:
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
           go-version-file: go.mod
+      - name: Install oapi-codegen
+        run: go install github.com/oapi-codegen/oapi-codegen/v2/cmd/oapi-codegen@v2.7.0
       - name: Verify generated code is current
-        run: |
-          go install github.com/oapi-codegen/oapi-codegen/v2/cmd/oapi-codegen@v2.7.0
-          go generate ./internal/api/v1/...
-          git diff --exit-code -- internal/api/v1/server.gen.go
+        run: make generate
 
   unit:
     name: Unit Tests
@@ -68,10 +67,7 @@ jobs:
           go-version-file: go.mod
 
       - name: Test
-        run: go test -race -coverprofile=coverage.out ./...
-
-      - name: Coverage summary
-        run: go tool cover -func=coverage.out
+        run: make test
 
   integration:
     name: Integration Tests
@@ -85,7 +81,7 @@ jobs:
           go-version-file: go.mod
 
       - name: Test
-        run: go test -race -tags integration -timeout 120s ./...
+        run: make test-integration
 
   docker:
     name: Docker Build & Scan
