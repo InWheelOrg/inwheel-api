@@ -12,6 +12,9 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
+	"slices"
+	"strings"
 	"testing"
 	"time"
 
@@ -320,6 +323,232 @@ func TestHandleGetPlaces_BoundingBoxPaginated(t *testing.T) {
 	for _, p := range append(places, places2...) {
 		if p.Name == "London" {
 			t.Error("London is outside bounding box and should not appear")
+		}
+	}
+}
+
+func TestHandleGetPlaces_QFilter(t *testing.T) {
+	tests := []struct {
+		name      string
+		seedNames []string
+		q         string
+		wantNames []string
+	}{
+		{
+			name:      "case-insensitive substring match",
+			seedNames: []string{"Vevey Church", "Vevey Market", "Lausanne Station"},
+			q:         "vevey",
+			wantNames: []string{"Vevey Church", "Vevey Market"},
+		},
+		{
+			name:      "no match returns empty page",
+			seedNames: []string{"Vevey Church"},
+			q:         "nonexistent",
+			wantNames: nil,
+		},
+		{
+			name:      "unescaped percent must not act as wildcard",
+			seedNames: []string{"100%Off", "100XXOff"},
+			q:         "100%Off",
+			wantNames: []string{"100%Off"},
+		},
+		{
+			name:      "unescaped underscore must not act as wildcard",
+			seedNames: []string{"Caf_Central", "CafXCentral"},
+			q:         "af_Ce",
+			wantNames: []string{"Caf_Central"},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Cleanup(func() { truncate(t) })
+			for _, name := range tt.seedNames {
+				testDB.Create(&models.Place{
+					Name: name, Lat: 52.5, Lng: 13.4,
+					Category: models.CategoryCafe, Rank: models.RankEstablishment, Source: "test",
+				})
+			}
+
+			u := url.URL{Path: "/v1/places", RawQuery: url.Values{"q": {tt.q}}.Encode()}
+			r := httptest.NewRequest(http.MethodGet, u.String(), nil)
+			w := httptest.NewRecorder()
+			handlerForServer(t, newTestServer(t)).ServeHTTP(w, r)
+
+			if w.Code != http.StatusOK {
+				t.Fatalf("status = %d, want 200; body: %s", w.Code, w.Body.String())
+			}
+			places, _ := decodePageResponse(t, w.Body.Bytes())
+			gotNames := make([]string, len(places))
+			for i, p := range places {
+				gotNames[i] = p.Name
+			}
+			slices.Sort(gotNames)
+			wantNames := slices.Clone(tt.wantNames)
+			slices.Sort(wantNames)
+			if !slices.Equal(gotNames, wantNames) {
+				t.Errorf("got names %v, want %v", gotNames, wantNames)
+			}
+		})
+	}
+}
+
+func TestHandleGetPlaces_QFilterComposesWithBoundingBox(t *testing.T) {
+	t.Cleanup(func() { truncate(t) })
+
+	inBoxMatch := models.Place{Name: "Vevey Church", Lat: 52.5, Lng: 13.4, Category: models.CategoryCafe, Rank: models.RankEstablishment, Source: "test"}
+	inBoxNoMatch := models.Place{Name: "Lausanne Station", Lat: 52.5, Lng: 13.4, Category: models.CategoryCafe, Rank: models.RankEstablishment, Source: "test"}
+	outOfBoxMatch := models.Place{Name: "Vevey Lakeside", Lat: 51.507, Lng: -0.127, Category: models.CategoryCafe, Rank: models.RankEstablishment, Source: "test"}
+	testDB.Create(&inBoxMatch)
+	testDB.Create(&inBoxNoMatch)
+	testDB.Create(&outOfBoxMatch)
+
+	r := httptest.NewRequest(http.MethodGet, "/v1/places?q=vevey&min_lng=10.0&min_lat=50.0&max_lng=15.0&max_lat=55.0", nil)
+	w := httptest.NewRecorder()
+	handlerForServer(t, newTestServer(t)).ServeHTTP(w, r)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200; body: %s", w.Code, w.Body.String())
+	}
+	places, _ := decodePageResponse(t, w.Body.Bytes())
+	if len(places) != 1 || places[0].Name != "Vevey Church" {
+		t.Errorf("got %+v, want only Vevey Church (matches q and bbox)", places)
+	}
+}
+
+func TestHandleGetPlaces_QParamStatusValidation(t *testing.T) {
+	tests := []struct {
+		name       string
+		q          string
+		wantStatus int
+	}{
+		{"blank q rejected", "", http.StatusBadRequest},
+		{"oversized q rejected", strings.Repeat("a", 257), http.StatusBadRequest},
+		{"max length q accepted", strings.Repeat("a", 256), http.StatusOK},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			u := url.URL{Path: "/v1/places", RawQuery: url.Values{"q": {tt.q}}.Encode()}
+			r := httptest.NewRequest(http.MethodGet, u.String(), nil)
+			w := httptest.NewRecorder()
+			handlerForServer(t, newTestServer(t)).ServeHTTP(w, r)
+
+			if w.Code != tt.wantStatus {
+				t.Errorf("status = %d, want %d; body: %s", w.Code, tt.wantStatus, w.Body.String())
+			}
+		})
+	}
+}
+
+func TestHandleGetPlaces_QFilterSQLInjectionIsInert(t *testing.T) {
+	t.Cleanup(func() { truncate(t) })
+
+	p := models.Place{Name: "Vevey Church", Lat: 52.5, Lng: 13.4, Category: models.CategoryCafe, Rank: models.RankEstablishment, Source: "test"}
+	testDB.Create(&p)
+
+	payloads := []string{
+		"'; DROP TABLE places; --",
+		"x' OR '1'='1",
+		"\" OR \"\"=\"",
+	}
+	for _, payload := range payloads {
+		t.Run(payload, func(t *testing.T) {
+			u := url.URL{Path: "/v1/places", RawQuery: url.Values{"q": {payload}}.Encode()}
+			r := httptest.NewRequest(http.MethodGet, u.String(), nil)
+			w := httptest.NewRecorder()
+			handlerForServer(t, newTestServer(t)).ServeHTTP(w, r)
+
+			if w.Code != http.StatusOK {
+				t.Fatalf("status = %d, want 200; body: %s", w.Code, w.Body.String())
+			}
+			places, _ := decodePageResponse(t, w.Body.Bytes())
+			if len(places) != 0 {
+				t.Errorf("got %d places, want 0 (payload treated as literal string)", len(places))
+			}
+		})
+	}
+
+	var count int64
+	if err := testDB.Model(&models.Place{}).Count(&count).Error; err != nil {
+		t.Fatalf("count places after injection attempts: %v", err)
+	}
+	if count != 1 {
+		t.Errorf("places table has %d rows after injection attempts, want 1 (table must be intact)", count)
+	}
+}
+
+func TestHandleGetPlaces_QFilterComposesWithProximity(t *testing.T) {
+	t.Cleanup(func() { truncate(t) })
+
+	inRadiusMatch := models.Place{Name: "Vevey Cafe", Lat: 52.52, Lng: 13.405, Category: models.CategoryCafe, Rank: models.RankEstablishment, Source: "test"}
+	inRadiusNoMatch := models.Place{Name: "Berlin Cafe", Lat: 52.521, Lng: 13.406, Category: models.CategoryCafe, Rank: models.RankEstablishment, Source: "test"}
+	outOfRadiusMatch := models.Place{Name: "Vevey Lakeside", Lat: 51.507, Lng: -0.127, Category: models.CategoryCafe, Rank: models.RankEstablishment, Source: "test"}
+	testDB.Create(&inRadiusMatch)
+	testDB.Create(&inRadiusNoMatch)
+	testDB.Create(&outOfRadiusMatch)
+
+	r := httptest.NewRequest(http.MethodGet, "/v1/places?q=vevey&lng=13.405&lat=52.52&radius=5000", nil)
+	w := httptest.NewRecorder()
+	handlerForServer(t, newTestServer(t)).ServeHTTP(w, r)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200; body: %s", w.Code, w.Body.String())
+	}
+	places, _ := decodePageResponse(t, w.Body.Bytes())
+	if len(places) != 1 || places[0].Name != "Vevey Cafe" {
+		t.Errorf("got %+v, want only Vevey Cafe (matches q and proximity)", places)
+	}
+}
+
+func TestHandleGetPlaces_QFilterComposesWithCursor(t *testing.T) {
+	t.Cleanup(func() { truncate(t) })
+
+	for i := 0; i < 3; i++ {
+		p := models.Place{
+			Name:      fmt.Sprintf("Vevey Place %d", i),
+			Lat:       52.5,
+			Lng:       13.4,
+			Category:  models.CategoryCafe,
+			Rank:      models.RankEstablishment,
+			Source:    "test",
+			UpdatedAt: time.Now().Add(time.Duration(i) * time.Second),
+		}
+		testDB.Create(&p)
+	}
+	other := models.Place{Name: "Lausanne Station", Lat: 52.5, Lng: 13.4, Category: models.CategoryCafe, Rank: models.RankEstablishment, Source: "test"}
+	testDB.Create(&other)
+
+	r := httptest.NewRequest(http.MethodGet, "/v1/places?q=vevey&limit=2", nil)
+	w := httptest.NewRecorder()
+	handlerForServer(t, newTestServer(t)).ServeHTTP(w, r)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200; body: %s", w.Code, w.Body.String())
+	}
+	places, cursor := decodePageResponse(t, w.Body.Bytes())
+	if len(places) != 2 {
+		t.Fatalf("page 1: got %d places, want 2", len(places))
+	}
+	if cursor == "" {
+		t.Fatal("expected cursor with 1 more matching result")
+	}
+
+	r2 := httptest.NewRequest(http.MethodGet, "/v1/places?q=vevey&limit=2&cursor="+cursor, nil)
+	w2 := httptest.NewRecorder()
+	handlerForServer(t, newTestServer(t)).ServeHTTP(w2, r2)
+
+	if w2.Code != http.StatusOK {
+		t.Fatalf("page 2 status = %d; body: %s", w2.Code, w2.Body.String())
+	}
+	places2, cursor2 := decodePageResponse(t, w2.Body.Bytes())
+	if len(places2) != 1 {
+		t.Errorf("page 2: got %d places, want 1", len(places2))
+	}
+	if cursor2 != "" {
+		t.Errorf("expected no cursor on last page, got %q", cursor2)
+	}
+	for _, p := range append(places, places2...) {
+		if p.Name == "Lausanne Station" {
+			t.Error("Lausanne Station should not match q=vevey")
 		}
 	}
 }

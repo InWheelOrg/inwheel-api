@@ -36,6 +36,10 @@ const (
 
 var emailRegex = regexp.MustCompile(`^[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}$`)
 
+func isBlank(s string) bool {
+	return strings.TrimSpace(s) == ""
+}
+
 // Email validates that s is a syntactically well-formed email address.
 func Email(s string) []FieldError {
 	if !emailRegex.MatchString(s) {
@@ -53,7 +57,7 @@ func Place(p *models.Place) []FieldError {
 
 	var errs []FieldError
 
-	if strings.TrimSpace(p.Name) == "" {
+	if isBlank(p.Name) {
 		errs = append(errs, FieldError{Field: "name", Reason: "must not be blank"})
 	}
 
@@ -74,6 +78,7 @@ type PlacesQueryParams struct {
 	MaxLng *float64
 	MaxLat *float64
 	Cursor *string
+	Q      *string
 }
 
 // PlacesQuery validates constraints on GET /places query params that OpenAPI
@@ -108,6 +113,10 @@ func PlacesQuery(p PlacesQueryParams) []FieldError {
 		if _, _, err := pagination.Decode(*p.Cursor); err != nil {
 			errs = append(errs, FieldError{Field: "cursor", Reason: "invalid cursor"})
 		}
+	}
+
+	if p.Q != nil && isBlank(*p.Q) {
+		errs = append(errs, FieldError{Field: "q", Reason: "must not be blank"})
 	}
 
 	return errs

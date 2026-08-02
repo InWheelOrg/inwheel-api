@@ -457,6 +457,7 @@ paths:
           - **Proximity**: `lng`, `lat`, `radius` — all three required together
           - **Bounding box**: `min_lng`, `min_lat`, `max_lng`, `max_lat` — all four required together
           - **Default**: most recently updated places
+        `q` (case-insensitive substring match on `name`) composes with any of the three modes above.
         Re-send identical filter params on every subsequent page.
       parameters:
         - name: limit
@@ -470,6 +471,12 @@ paths:
           in: query
           schema:
             type: string
+        - name: q
+          in: query
+          schema:
+            type: string
+            minLength: 1
+            maxLength: 256
         - name: lng
           in: query
           schema:

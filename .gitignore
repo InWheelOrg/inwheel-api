@@ -7,6 +7,7 @@ postman/
 .DS_Store
 .worktrees/
 docs/superpowers/
+.superpowers/
 .claude/
 !.claude/settings.json
 graphify-out/

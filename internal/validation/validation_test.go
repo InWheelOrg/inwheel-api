@@ -18,7 +18,6 @@ func b64Enc(b []byte) string {
 }
 
 func ptrFloat(v float64) *float64 { return &v }
-func ptrInt(v int) *int            { return &v }
 
 func validPlace() *models.Place {
 	return &models.Place{
@@ -162,7 +161,30 @@ func TestPlacesQuery_BBoxOrdering(t *testing.T) {
 	})
 }
 
-// Cursor format: base64-encoded timestamp|UUID pair.
+func TestPlacesQuery_QParam(t *testing.T) {
+	t.Parallel()
+	str := func(s string) *string { return &s }
+
+	tests := []struct {
+		name    string
+		q       *string
+		wantErr bool
+	}{
+		{"no q", nil, false},
+		{"valid q", str("church"), false},
+		{"blank q", str(""), true},
+		{"whitespace-only q", str("   "), true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			errs := PlacesQuery(PlacesQueryParams{Q: tt.q})
+			if got := errorsHaveField(errs, "q"); got != tt.wantErr {
+				t.Errorf("q=%v: errorsHaveField=%v, want %v; errs=%+v", tt.q, got, tt.wantErr, errs)
+			}
+		})
+	}
+}
+
 func TestPlacesQuery_CursorParam(t *testing.T) {
 	t.Parallel()
 	const validTS = "2026-05-01T12:00:00Z"
