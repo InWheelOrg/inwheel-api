@@ -25,9 +25,11 @@ erDiagram
 
 `AccessibilityProfile` has one named, independently-optional field per component type — `Entrance`, `Pathways`, `Restroom`, `Parking`, `Elevator` — rather than an array of generically-typed components. Each is a pointer; a `nil` component means no data was submitted for it, not "unknown/inaccessible." There is no top-level or per-component status field — component structs hold typed facts directly (e.g. `EntranceProps.Width`, `RestroomProps.HasGrabRails`).
 
+Measurement fields (`width`, `slope_percent`, `door_width`, `turning_radius`, `toilet_seat_height`, `distance_to_entrance`, `depth`) are `*AccessibilityLevel` (`good`/`limited`/`no`), not raw numbers — submitters rate the field directly rather than measuring it. Each field's doc comment cites the standard (SIA 500 or ADA) its bands are derived from.
+
 `SourceReports` is a separate array of `SourceReport{Source, Value, RecordedAt}` — raw opinions from external sources (e.g. OSM's `wheelchair=yes` tag) stored verbatim, uninterpreted. Clients decide how much to trust each source.
 
-`AuditFlags` on each component are string facts computed by `internal/a11y` on every write (e.g. `"narrow width (0.8m required)"`). They describe physical properties of that component and are surfaced to clients as-is. The API never uses them to decide a place's accessibility status, and no write is ever rejected because of them — that judgment is left to client logic applied against the user's profile.
+`AuditFlags` on each component are string facts computed by `internal/a11y` on every write (e.g. `"narrow width"` when a measurement field is rated `no`). They describe physical properties of that component and are surfaced to clients as-is. The API never uses them to decide a place's accessibility status, and no write is ever rejected because of them — that judgment is left to client logic applied against the user's profile.
 
 `IsInherited` and `SourceID` on a component are set at read time by `internal/a11y.ComputeEffectiveProfile` when the component originates from a parent place. They are not persisted.
 

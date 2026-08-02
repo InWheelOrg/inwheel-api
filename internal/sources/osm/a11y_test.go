@@ -204,6 +204,63 @@ func TestMapTagsToProfile_Entrance(t *testing.T) {
 			t.Errorf("ramp=yes alone should return nil, got %+v", got)
 		}
 	})
+	t.Run("width sets Width level", func(t *testing.T) {
+		got := mapTagsToProfile(map[string]string{"width": "0.9"})
+		if got == nil || got.Entrance == nil {
+			t.Fatal("expected entrance")
+		}
+		if got.Entrance.Width == nil || *got.Entrance.Width != models.LevelGood {
+			t.Errorf("Width = %v, want good", got.Entrance.Width)
+		}
+	})
+	t.Run("width takes precedence over door:width", func(t *testing.T) {
+		got := mapTagsToProfile(map[string]string{"width": "0.9", "door:width": "0.6"})
+		if got == nil || got.Entrance == nil {
+			t.Fatal("expected entrance")
+		}
+		if got.Entrance.Width == nil || *got.Entrance.Width != models.LevelGood {
+			t.Errorf("Width = %v, want good (width tag wins when present)", got.Entrance.Width)
+		}
+	})
+	t.Run("door:width used when width absent", func(t *testing.T) {
+		got := mapTagsToProfile(map[string]string{"door:width": "0.6"})
+		if got == nil || got.Entrance == nil {
+			t.Fatal("expected entrance")
+		}
+		if got.Entrance.Width == nil || *got.Entrance.Width != models.LevelNo {
+			t.Errorf("Width = %v, want no", got.Entrance.Width)
+		}
+	})
+	t.Run("unparseable width is skipped", func(t *testing.T) {
+		got := mapTagsToProfile(map[string]string{"width": "narrow"})
+		if got != nil {
+			t.Errorf("unparseable width alone should return nil, got %+v", got)
+		}
+	})
+	t.Run("incline sets SlopePercent level", func(t *testing.T) {
+		got := mapTagsToProfile(map[string]string{"incline": "10%"})
+		if got == nil || got.Entrance == nil {
+			t.Fatal("expected entrance")
+		}
+		if got.Entrance.SlopePercent == nil || *got.Entrance.SlopePercent != models.LevelNo {
+			t.Errorf("SlopePercent = %v, want no", got.Entrance.SlopePercent)
+		}
+	})
+	t.Run("negative incline is treated as its magnitude", func(t *testing.T) {
+		got := mapTagsToProfile(map[string]string{"incline": "-5%"})
+		if got == nil || got.Entrance == nil {
+			t.Fatal("expected entrance")
+		}
+		if got.Entrance.SlopePercent == nil || *got.Entrance.SlopePercent != models.LevelGood {
+			t.Errorf("SlopePercent = %v, want good", got.Entrance.SlopePercent)
+		}
+	})
+	t.Run("non-percentage incline is skipped", func(t *testing.T) {
+		got := mapTagsToProfile(map[string]string{"incline": "up"})
+		if got != nil {
+			t.Errorf("non-percentage incline alone should return nil, got %+v", got)
+		}
+	})
 }
 
 func TestMapTagsToProfile_Elevator(t *testing.T) {

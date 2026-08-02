@@ -12,8 +12,8 @@ import (
 	"github.com/InWheelOrg/inwheel-api/pkg/models"
 )
 
-func boolPtr(v bool) *bool        { return &v }
-func floatPtr(v float64) *float64 { return &v }
+func boolPtr(v bool) *bool                                            { return &v }
+func levelPtr(v models.AccessibilityLevel) *models.AccessibilityLevel { return &v }
 
 func TestComputeEffectiveProfile(t *testing.T) {
 	t.Parallel()
@@ -127,13 +127,18 @@ func TestWithAuditFlags(t *testing.T) {
 			wantFlags: map[string][]string{"entrance": nil},
 		},
 		{
-			name:      "entrance: width below 0.8m",
-			profile:   models.AccessibilityProfile{Entrance: &models.EntranceProps{Width: floatPtr(0.75)}},
+			name:      "entrance: width level no",
+			profile:   models.AccessibilityProfile{Entrance: &models.EntranceProps{Width: levelPtr(models.LevelNo)}},
 			wantFlags: map[string][]string{"entrance": {FlagEntranceNarrowWidth}},
 		},
 		{
-			name:      "entrance: width exactly 0.8m, no flag",
-			profile:   models.AccessibilityProfile{Entrance: &models.EntranceProps{Width: floatPtr(0.8)}},
+			name:      "entrance: width level limited, no flag",
+			profile:   models.AccessibilityProfile{Entrance: &models.EntranceProps{Width: levelPtr(models.LevelLimited)}},
+			wantFlags: map[string][]string{"entrance": nil},
+		},
+		{
+			name:      "entrance: width level good, no flag",
+			profile:   models.AccessibilityProfile{Entrance: &models.EntranceProps{Width: levelPtr(models.LevelGood)}},
 			wantFlags: map[string][]string{"entrance": nil},
 		},
 		{
@@ -154,25 +159,25 @@ func TestWithAuditFlags(t *testing.T) {
 
 		// --- pathways ---
 		{
-			name:      "pathway: width below 0.9m",
-			profile:   models.AccessibilityProfile{Pathways: &models.PathwayProps{Width: floatPtr(0.8)}},
+			name:      "pathway: width level no",
+			profile:   models.AccessibilityProfile{Pathways: &models.PathwayProps{Width: levelPtr(models.LevelNo)}},
 			wantFlags: map[string][]string{"pathways": {FlagPathwayNarrowWidth}},
 		},
 		{
-			name:      "pathway: width at 0.9m, no flag",
-			profile:   models.AccessibilityProfile{Pathways: &models.PathwayProps{Width: floatPtr(0.9)}},
+			name:      "pathway: width level good, no flag",
+			profile:   models.AccessibilityProfile{Pathways: &models.PathwayProps{Width: levelPtr(models.LevelGood)}},
 			wantFlags: map[string][]string{"pathways": nil},
 		},
 
 		// --- restroom ---
 		{
-			name:      "restroom: door width below 0.8m",
-			profile:   models.AccessibilityProfile{Restroom: &models.RestroomProps{DoorWidth: floatPtr(0.75)}},
+			name:      "restroom: door width level no",
+			profile:   models.AccessibilityProfile{Restroom: &models.RestroomProps{DoorWidth: levelPtr(models.LevelNo)}},
 			wantFlags: map[string][]string{"restroom": {FlagRestroomNarrowDoor}},
 		},
 		{
-			name:      "restroom: turning radius below 1.5m",
-			profile:   models.AccessibilityProfile{Restroom: &models.RestroomProps{TurningRadius: floatPtr(1.2)}},
+			name:      "restroom: turning radius level no",
+			profile:   models.AccessibilityProfile{Restroom: &models.RestroomProps{TurningRadius: levelPtr(models.LevelNo)}},
 			wantFlags: map[string][]string{"restroom": {FlagRestroomSmallTurning}},
 		},
 		{
@@ -200,18 +205,18 @@ func TestWithAuditFlags(t *testing.T) {
 
 		// --- elevator ---
 		{
-			name:      "elevator: width below 0.8m",
-			profile:   models.AccessibilityProfile{Elevator: &models.ElevatorProps{Width: floatPtr(0.7)}},
+			name:      "elevator: width level no",
+			profile:   models.AccessibilityProfile{Elevator: &models.ElevatorProps{Width: levelPtr(models.LevelNo)}},
 			wantFlags: map[string][]string{"elevator": {FlagElevatorNarrowWidth}},
 		},
 		{
-			name:      "elevator: depth below 1.1m",
-			profile:   models.AccessibilityProfile{Elevator: &models.ElevatorProps{Depth: floatPtr(1.0)}},
+			name:      "elevator: depth level no",
+			profile:   models.AccessibilityProfile{Elevator: &models.ElevatorProps{Depth: levelPtr(models.LevelNo)}},
 			wantFlags: map[string][]string{"elevator": {FlagElevatorShallowDepth}},
 		},
 		{
-			name:      "elevator: door width below 0.8m",
-			profile:   models.AccessibilityProfile{Elevator: &models.ElevatorProps{DoorWidth: floatPtr(0.75)}},
+			name:      "elevator: door width level no",
+			profile:   models.AccessibilityProfile{Elevator: &models.ElevatorProps{DoorWidth: levelPtr(models.LevelNo)}},
 			wantFlags: map[string][]string{"elevator": {FlagElevatorNarrowDoor}},
 		},
 		{
@@ -281,5 +286,43 @@ func TestWithAuditFlags(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+func TestLevelForDoorWidth(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		metres float64
+		want   models.AccessibilityLevel
+	}{
+		{0.90, models.LevelGood},
+		{0.80, models.LevelGood},
+		{0.75, models.LevelLimited},
+		{0.70, models.LevelLimited},
+		{0.65, models.LevelNo},
+	}
+	for _, tt := range tests {
+		if got := LevelForDoorWidth(tt.metres); got != tt.want {
+			t.Errorf("LevelForDoorWidth(%v) = %v, want %v", tt.metres, got, tt.want)
+		}
+	}
+}
+
+func TestLevelForSlopePercent(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		percent float64
+		want    models.AccessibilityLevel
+	}{
+		{4, models.LevelGood},
+		{6, models.LevelGood},
+		{7, models.LevelLimited},
+		{8.33, models.LevelLimited},
+		{9, models.LevelNo},
+	}
+	for _, tt := range tests {
+		if got := LevelForSlopePercent(tt.percent); got != tt.want {
+			t.Errorf("LevelForSlopePercent(%v) = %v, want %v", tt.percent, got, tt.want)
+		}
 	}
 }

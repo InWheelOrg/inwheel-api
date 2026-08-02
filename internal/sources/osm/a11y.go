@@ -7,8 +7,10 @@ package osm
 
 import (
 	"strconv"
+	"strings"
 	"time"
 
+	"github.com/InWheelOrg/inwheel-api/internal/a11y"
 	"github.com/InWheelOrg/inwheel-api/pkg/models"
 )
 
@@ -114,6 +116,18 @@ func mapEntrance(tags map[string]string) *models.EntranceProps {
 		found = true
 	}
 
+	if v, ok := parseMetres(tags["width"], tags["door:width"]); ok {
+		level := a11y.LevelForDoorWidth(v)
+		props.Width = &level
+		found = true
+	}
+
+	if v, ok := parsePercent(tags["incline"]); ok {
+		level := a11y.LevelForSlopePercent(v)
+		props.SlopePercent = &level
+		found = true
+	}
+
 	if !found {
 		return nil
 	}
@@ -126,6 +140,33 @@ func stepCountPositive(v string) bool {
 	}
 	n, err := strconv.Atoi(v)
 	return err == nil && n > 0
+}
+
+func parseMetres(tags ...string) (float64, bool) {
+	for _, v := range tags {
+		if v == "" {
+			continue
+		}
+		if f, err := strconv.ParseFloat(v, 64); err == nil {
+			return f, true
+		}
+	}
+	return 0, false
+}
+
+func parsePercent(v string) (float64, bool) {
+	v = strings.TrimSpace(v)
+	if !strings.HasSuffix(v, "%") {
+		return 0, false
+	}
+	f, err := strconv.ParseFloat(strings.TrimSuffix(v, "%"), 64)
+	if err != nil {
+		return 0, false
+	}
+	if f < 0 {
+		f = -f
+	}
+	return f, true
 }
 
 func mapElevator(tags map[string]string) *models.ElevatorProps {

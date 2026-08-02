@@ -13,23 +13,49 @@ import (
 
 // Audit flag constants computed from submitted property values.
 const (
-	FlagEntranceNarrowWidth  = "narrow width (0.8m required)"
+	FlagEntranceNarrowWidth  = "narrow width"
 	FlagEntranceNoLevelRoute = "no level route (no ramp and not level)"
 
-	FlagRestroomNarrowDoor    = "narrow door (0.8m required)"
-	FlagRestroomSmallTurning  = "small turning radius (1.5m required)"
-	FlagRestroomNoGrabRails   = "missing grab rails"
+	FlagRestroomNarrowDoor   = "narrow door"
+	FlagRestroomSmallTurning = "small turning radius"
+	FlagRestroomNoGrabRails  = "missing grab rails"
 
-	FlagElevatorNarrowWidth    = "small cabin width (0.8m required)"
-	FlagElevatorShallowDepth   = "small cabin depth (1.1m required)"
-	FlagElevatorNarrowDoor     = "narrow door (0.8m required)"
-	FlagElevatorNoBraille      = "missing braille"
-	FlagElevatorNoAudio        = "missing audio"
+	FlagElevatorNarrowWidth  = "small cabin width"
+	FlagElevatorShallowDepth = "small cabin depth"
+	FlagElevatorNarrowDoor   = "narrow door"
+	FlagElevatorNoBraille    = "missing braille"
+	FlagElevatorNoAudio      = "missing audio"
 
 	FlagParkingNoDisabledSpaces = "no disabled spaces"
 
-	FlagPathwayNarrowWidth = "narrow pathway (0.9m required)"
+	FlagPathwayNarrowWidth = "narrow pathway"
 )
+
+// LevelForDoorWidth maps a clear opening width in metres to an AccessibilityLevel.
+// Good >=0.80m, limited 0.70-0.80m, no <0.70m (SIA 500).
+func LevelForDoorWidth(metres float64) models.AccessibilityLevel {
+	switch {
+	case metres >= 0.80:
+		return models.LevelGood
+	case metres >= 0.70:
+		return models.LevelLimited
+	default:
+		return models.LevelNo
+	}
+}
+
+// LevelForSlopePercent maps a ramp slope percentage to an AccessibilityLevel.
+// Good <=6%, limited 6-8.33%, no >8.33% (ADA).
+func LevelForSlopePercent(percent float64) models.AccessibilityLevel {
+	switch {
+	case percent <= 6:
+		return models.LevelGood
+	case percent <= 8.33:
+		return models.LevelLimited
+	default:
+		return models.LevelNo
+	}
+}
 
 type Engine struct{}
 
@@ -124,7 +150,7 @@ func (e *Engine) ComputeEffectiveProfile(child, parent *models.Place) *models.Ac
 
 func entranceFlags(p *models.EntranceProps) []string {
 	var flags []string
-	if p.Width != nil && *p.Width < 0.8 {
+	if p.Width != nil && *p.Width == models.LevelNo {
 		flags = append(flags, FlagEntranceNarrowWidth)
 	}
 	// Only flag when IsLevel is explicitly false; nil means unknown, no flag.
@@ -139,7 +165,7 @@ func entranceFlags(p *models.EntranceProps) []string {
 
 func pathwayFlags(p *models.PathwayProps) []string {
 	var flags []string
-	if p.Width != nil && *p.Width < 0.9 {
+	if p.Width != nil && *p.Width == models.LevelNo {
 		flags = append(flags, FlagPathwayNarrowWidth)
 	}
 	return flags
@@ -147,10 +173,10 @@ func pathwayFlags(p *models.PathwayProps) []string {
 
 func restroomFlags(p *models.RestroomProps) []string {
 	var flags []string
-	if p.DoorWidth != nil && *p.DoorWidth < 0.8 {
+	if p.DoorWidth != nil && *p.DoorWidth == models.LevelNo {
 		flags = append(flags, FlagRestroomNarrowDoor)
 	}
-	if p.TurningRadius != nil && *p.TurningRadius < 1.5 {
+	if p.TurningRadius != nil && *p.TurningRadius == models.LevelNo {
 		flags = append(flags, FlagRestroomSmallTurning)
 	}
 	if p.HasGrabRails != nil && !*p.HasGrabRails {
@@ -169,13 +195,13 @@ func parkingFlags(p *models.ParkingProps) []string {
 
 func elevatorFlags(p *models.ElevatorProps) []string {
 	var flags []string
-	if p.Width != nil && *p.Width < 0.8 {
+	if p.Width != nil && *p.Width == models.LevelNo {
 		flags = append(flags, FlagElevatorNarrowWidth)
 	}
-	if p.Depth != nil && *p.Depth < 1.1 {
+	if p.Depth != nil && *p.Depth == models.LevelNo {
 		flags = append(flags, FlagElevatorShallowDepth)
 	}
-	if p.DoorWidth != nil && *p.DoorWidth < 0.8 {
+	if p.DoorWidth != nil && *p.DoorWidth == models.LevelNo {
 		flags = append(flags, FlagElevatorNarrowDoor)
 	}
 	if p.HasBraille != nil && !*p.HasBraille {
