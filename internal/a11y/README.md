@@ -7,30 +7,32 @@ Pure rule engine that runs synchronously on every write touching an `Accessibili
 ## Core principles
 
 1. **Data fidelity.** The API stores what is submitted. It does not compute whether a place is accessible — that judgement belongs to the client, which knows the user's specific needs.
-2. **Facts over opinions.** `AuditFlags` are objective facts derived from the submitter's own property values (e.g. entrance width < 0.8m is a measurable fact). They are stored for clients to use, not for the server to act on.
+2. **Facts over opinions.** `AuditFlags` are objective facts derived from the submitter's own property values (e.g. entrance width rated `no` is a measurable fact). They are stored for clients to use, not for the server to act on.
 3. **Specific overrides general.** A child place's own component data always takes precedence over the parent's equivalent component.
 4. **No write is ever rejected on accessibility grounds.** There is no conflict detection and no 422 response from this package. Audit flags are informational only.
 
 ## AuditFlags
 
-`WithAuditFlags` recomputes `AuditFlags` on every non-nil component on every write. The flags are deterministic derivations of what the submitter themselves provided:
+`WithAuditFlags` recomputes `AuditFlags` on every non-nil component on every write. Measurement fields (`width`, `slope_percent`, `door_width`, `turning_radius`, `toilet_seat_height`, `distance_to_entrance`, `depth`) are submitted as an `AccessibilityLevel` (`good`/`limited`/`no`) rather than a raw number — the submitter rates the field directly, no measuring required. Flags fire only on `no`:
 
 | Component | Flag | Condition |
 |---|---|---|
-| Entrance | `narrow width (0.8m required)` | `width < 0.8m` |
+| Entrance | `narrow width` | `width = no` |
 | Entrance | `no level route (no ramp and not level)` | `is_level = false` and neither `has_fixed_ramp` nor `has_removable_ramp` is true |
-| Pathways | `narrow pathway (0.9m required)` | `width < 0.9m` |
-| Restroom | `narrow door (0.8m required)` | `door_width < 0.8m` |
-| Restroom | `small turning radius (1.5m required)` | `turning_radius < 1.5m` |
+| Pathways | `narrow pathway` | `width = no` |
+| Restroom | `narrow door` | `door_width = no` |
+| Restroom | `small turning radius` | `turning_radius = no` |
 | Restroom | `missing grab rails` | `has_grab_rails = false` |
 | Parking | `no disabled spaces` | `has_disabled_spaces = false` |
-| Elevator | `small cabin width (0.8m required)` | `width < 0.8m` |
-| Elevator | `small cabin depth (1.1m required)` | `depth < 1.1m` |
-| Elevator | `narrow door (0.8m required)` | `door_width < 0.8m` |
+| Elevator | `small cabin width` | `width = no` |
+| Elevator | `small cabin depth` | `depth = no` |
+| Elevator | `narrow door` | `door_width = no` |
 | Elevator | `missing braille` | `has_braille = false` |
 | Elevator | `missing audio` | `has_audio = false` |
 
-A field left `nil` means "unknown" and never triggers a flag — flags only fire on an explicit value that fails the threshold. The engine never concludes that a place is inaccessible; clients receive the flags and apply their own relevance logic per user profile.
+A field left `nil` means "unknown" and never triggers a flag — flags only fire on an explicit `no`. The engine never concludes that a place is inaccessible; clients receive the flags and apply their own relevance logic per user profile.
+
+`LevelForDoorWidth` and `LevelForSlopePercent` convert a raw metres/percent value into an `AccessibilityLevel` per the bands documented on the corresponding `pkg/models` struct fields (SIA 500 / ADA). They exist for ingestion sources that supply raw measurements (currently only `internal/sources/osm`, for the `width`/`door:width`/`incline` OSM tags) — API writers submit the level directly and never go through this conversion.
 
 ## Write flow
 

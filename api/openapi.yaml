@@ -32,6 +32,10 @@ components:
       type: string
       enum: [asphalt, paving_stones, cobblestone, gravel, concrete, wood, carpet, tiles]
 
+    AccessibilityLevel:
+      type: string
+      enum: [good, limited, no]
+
     Category:
       type: string
       enum:
@@ -68,10 +72,7 @@ components:
         type:
           $ref: "#/components/schemas/DoorType"
         width:
-          type: number
-          format: double
-          minimum: 0
-          maximum: 10
+          $ref: "#/components/schemas/AccessibilityLevel"
 
     EntranceProps:
       x-go-type: models.EntranceProps
@@ -87,15 +88,9 @@ components:
         has_removable_ramp:
           type: boolean
         slope_percent:
-          type: number
-          format: double
-          minimum: 0
-          maximum: 100
+          $ref: "#/components/schemas/AccessibilityLevel"
         width:
-          type: number
-          format: double
-          minimum: 0
-          maximum: 10
+          $ref: "#/components/schemas/AccessibilityLevel"
         door:
           $ref: "#/components/schemas/DoorProps"
         has_intercom:
@@ -114,10 +109,7 @@ components:
       type: object
       properties:
         width:
-          type: number
-          format: double
-          minimum: 0
-          maximum: 20
+          $ref: "#/components/schemas/AccessibilityLevel"
         surface:
           $ref: "#/components/schemas/SurfaceType"
         is_kerbstone_free:
@@ -140,24 +132,15 @@ components:
         is_accessible:
           type: boolean
         door_width:
-          type: number
-          format: double
-          minimum: 0
-          maximum: 10
+          $ref: "#/components/schemas/AccessibilityLevel"
         turning_radius:
-          type: number
-          format: double
-          minimum: 0
-          maximum: 10
+          $ref: "#/components/schemas/AccessibilityLevel"
         has_grab_rails:
           type: boolean
         has_roll_in_shower:
           type: boolean
         toilet_seat_height:
-          type: number
-          format: double
-          minimum: 0
-          maximum: 1
+          $ref: "#/components/schemas/AccessibilityLevel"
         has_emergency_pull:
           type: boolean
         has_changing_table:
@@ -182,15 +165,9 @@ components:
           minimum: 0
           maximum: 10000
         distance_to_entrance:
-          type: number
-          format: double
-          minimum: 0
-          maximum: 10000
+          $ref: "#/components/schemas/AccessibilityLevel"
         width:
-          type: number
-          format: double
-          minimum: 0
-          maximum: 20
+          $ref: "#/components/schemas/AccessibilityLevel"
         has_dedicated_signage:
           type: boolean
         audit_flags:
@@ -207,20 +184,11 @@ components:
       type: object
       properties:
         width:
-          type: number
-          format: double
-          minimum: 0
-          maximum: 10
+          $ref: "#/components/schemas/AccessibilityLevel"
         depth:
-          type: number
-          format: double
-          minimum: 0
-          maximum: 10
+          $ref: "#/components/schemas/AccessibilityLevel"
         door_width:
-          type: number
-          format: double
-          minimum: 0
-          maximum: 10
+          $ref: "#/components/schemas/AccessibilityLevel"
         has_braille:
           type: boolean
         has_audio:

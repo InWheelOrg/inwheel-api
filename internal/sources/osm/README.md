@@ -66,7 +66,11 @@ The natural key for upserts is `(osm_id, osm_type)`, where `osm_type` is `node`,
 | `automatic_door` not empty and ≠ `no` | `EntranceProps.Door.Type=automatic` |
 | `step_count` or `entrance:step_count` ≥ 1 | `EntranceProps.IsLevel=false` |
 | `ramp:wheelchair=yes\|no` | `EntranceProps.HasFixedRamp` (takes precedence over generic `ramp=no`) |
+| `width` or `door:width` (metres, `width` takes precedence) | `EntranceProps.Width` via `a11y.LevelForDoorWidth` |
+| `incline` (percentage form, e.g. `8%`; other forms like `up`/`6°` are skipped) | `EntranceProps.SlopePercent` via `a11y.LevelForSlopePercent` |
 | `elevator=yes` | `ElevatorProps{}` (presence only; no dimensions from OSM) |
+
+`models.EntranceProps.Width`/`SlopePercent` and the equivalent fields on the other components are `AccessibilityLevel` (`good`/`limited`/`no`), not raw numbers — see `pkg/models/README.md`. OSM is currently the only source with raw measurement tags, and only for entrance width and ramp slope; no OSM tag maps to the other measurement fields (turning radius, toilet seat height, elevator dimensions, parking width/distance), so they are never populated by this pipeline.
 
 There is no conflict detection anywhere in this mapping or downstream. The `wheelchair` tag is never interpreted into a computed status — it is recorded as a raw opinion in `SourceReports` and left for clients to weigh alongside the typed component facts.
 

@@ -133,7 +133,7 @@ func TestHandlePostPlace_InformationalFlagsAllowed(t *testing.T) {
 	t.Cleanup(func() { truncate(t) })
 
 	// narrow width sets an audit flag but must not block the write
-	narrowWidth := 0.75
+	narrowWidth := models.LevelNo
 	body, _ := json.Marshal(models.Place{
 		Name:     "Narrow Cafe",
 		Lat:      52.5,
@@ -162,7 +162,7 @@ func TestHandlePostPlace_InformationalFlagsAllowed(t *testing.T) {
 	}
 	found := false
 	for _, f := range place.Accessibility.Entrance.AuditFlags {
-		if f == "narrow width (0.8m required)" {
+		if f == a11y.FlagEntranceNarrowWidth {
 			found = true
 		}
 	}
