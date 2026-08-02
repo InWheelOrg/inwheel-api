@@ -280,7 +280,6 @@ func TestRunCanonical_DoesNotOverwriteUserVerified(t *testing.T) {
 	ctx := context.Background()
 	db := testDB
 
-	isLevel := false
 	repo := place.NewRepository(db)
 	seed := models.Place{
 		OSMID: 2001, OSMType: models.OSMNode, Name: "Verified",
@@ -292,9 +291,8 @@ func TestRunCanonical_DoesNotOverwriteUserVerified(t *testing.T) {
 	if err := db.Create(&seed).Error; err != nil {
 		t.Fatalf("seed place: %v", err)
 	}
-	_, err := repo.UpsertProfile(ctx, seed.ID, &models.AccessibilityProfile{
-		Entrance:     &models.EntranceProps{IsLevel: &isLevel},
-		UserVerified: true,
+	_, _, err := repo.UpsertProfile(ctx, seed.ID, []byte(`{"entrance":{"is_level":false}}`), func(p *models.AccessibilityProfile) {
+		p.UserVerified = true
 	})
 	if err != nil {
 		t.Fatalf("seed profile: %v", err)

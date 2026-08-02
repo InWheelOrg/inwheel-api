@@ -4,8 +4,8 @@
  */
 
 // Package validation enforces constraints that cannot be expressed in the
-// OpenAPI spec: whitespace-only strings, tag/metadata size limits, mutual
-// exclusivity of query-param groups, and cursor format.
+// OpenAPI spec: whitespace-only strings, tag/metadata/source-report size
+// limits, mutual exclusivity of query-param groups, and cursor format.
 // Structural checks (required fields, enum values, numeric bounds, UUID format)
 // are handled by the nethttp-middleware spec validator before handlers run.
 package validation
@@ -26,12 +26,13 @@ type FieldError struct {
 }
 
 const (
-	maxNameLength      = 256
-	maxSourceLength    = 64
-	maxTagEntries      = 50
-	maxTagKeyLength    = 64
-	maxTagValueLength  = 256
-	maxParkingCount    = 10000
+	maxNameLength          = 256
+	maxSourceLength        = 64
+	maxTagEntries          = 50
+	maxTagKeyLength        = 64
+	maxTagValueLength      = 256
+	maxParkingCount        = 10000
+	maxSourceReportEntries = 50
 )
 
 var emailRegex = regexp.MustCompile(`^[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}$`)
@@ -119,6 +120,27 @@ func PlacesQuery(p PlacesQueryParams) []FieldError {
 		errs = append(errs, FieldError{Field: "q", Reason: "must not be blank"})
 	}
 
+	return errs
+}
+
+func AccessibilityProfile(p *models.AccessibilityProfile) []FieldError {
+	if p == nil {
+		return nil
+	}
+
+	if len(p.SourceReports) > maxSourceReportEntries {
+		return []FieldError{{Field: "source_reports", Reason: fmt.Sprintf("must contain ≤ %d entries", maxSourceReportEntries)}}
+	}
+
+	var errs []FieldError
+	for i, sr := range p.SourceReports {
+		if len(sr.Source) > maxSourceLength {
+			errs = append(errs, FieldError{Field: "source_reports", Reason: fmt.Sprintf("entry %d: source exceeds %d characters", i, maxSourceLength)})
+		}
+		if len(sr.Value) > maxSourceLength {
+			errs = append(errs, FieldError{Field: "source_reports", Reason: fmt.Sprintf("entry %d: value exceeds %d characters", i, maxSourceLength)})
+		}
+	}
 	return errs
 }
 

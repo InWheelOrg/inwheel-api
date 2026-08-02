@@ -6,9 +6,11 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
+	"io"
 	"log/slog"
 	"net/http"
 	"os"
@@ -36,10 +38,29 @@ import (
 )
 
 type ctxKeyRequest struct{}
+type ctxKeyRawBody struct{}
 
 func requestFromCtx(ctx context.Context) *http.Request {
 	r, _ := ctx.Value(ctxKeyRequest{}).(*http.Request)
 	return r
+}
+
+func rawBodyFromCtx(ctx context.Context) []byte {
+	b, _ := ctx.Value(ctxKeyRawBody{}).([]byte)
+	return b
+}
+
+func captureRawBody(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		body, err := io.ReadAll(r.Body)
+		if err != nil {
+			http.Error(w, "failed to read request body", http.StatusBadRequest)
+			return
+		}
+		_ = r.Body.Close()
+		r.Body = io.NopCloser(bytes.NewReader(body))
+		next.ServeHTTP(w, r.WithContext(context.WithValue(r.Context(), ctxKeyRawBody{}, body)))
+	})
 }
 
 func injectRequest() apiv1.StrictMiddlewareFunc {
@@ -169,6 +190,7 @@ func buildV1Handler(srv *Server, corsOrigin string) (http.Handler, error) {
 		BaseRouter:       v1Mux,
 		ErrorHandlerFunc: srv.validationErrorHandler,
 		Middlewares: []apiv1.MiddlewareFunc{
+			captureRawBody,
 			bodySizeLimiter(1 << 20),
 		},
 	})
@@ -323,22 +345,28 @@ func (s *Server) GetPlace(ctx context.Context, request apiv1.GetPlaceRequestObje
 
 func (s *Server) PatchPlaceAccessibility(ctx context.Context, request apiv1.PatchPlaceAccessibilityRequestObject) (apiv1.PatchPlaceAccessibilityResponseObject, error) {
 	id := request.Id.String()
-	input := *request.Body
 	keyID := middleware.APIKeyIDFromCtx(ctx)
 
-	s.engine.WithAuditFlags(&input)
-
-	now := time.Now()
-	if keyID != "" {
-		input.SubmittedBy = &keyID
-		input.UserVerified = true
+	if errs := validation.AccessibilityProfile(request.Body); len(errs) > 0 {
+		return apiv1.PatchPlaceAccessibility400JSONResponse(validationError(errs)), nil
 	}
-	input.SubmittedAt = &now
 
-	created, err := s.places.UpsertProfile(ctx, id, &input)
+	rawPatch := rawBodyFromCtx(requestFromCtx(ctx).Context())
+	now := time.Now()
+	profile, created, err := s.places.UpsertProfile(ctx, id, rawPatch, func(p *models.AccessibilityProfile) {
+		s.engine.WithAuditFlags(p)
+		if keyID != "" {
+			p.SubmittedBy = &keyID
+			p.UserVerified = true
+		}
+		p.SubmittedAt = &now
+	})
 	if err != nil {
 		if errors.Is(err, place.ErrPlaceNotFound) {
 			return apiv1.PatchPlaceAccessibility404JSONResponse{Error: "place not found"}, nil
+		}
+		if errors.Is(err, place.ErrInvalidPatch) {
+			return apiv1.PatchPlaceAccessibility400JSONResponse(validationError([]validation.FieldError{{Field: "body", Reason: err.Error()}})), nil
 		}
 		return nil, err
 	}
@@ -347,9 +375,9 @@ func (s *Server) PatchPlaceAccessibility(ctx context.Context, request apiv1.Patc
 	if created {
 		auditAction = "create"
 	}
-	audit.Log(s.db, "accessibility_profiles", input.ID, keyID, auditAction)
+	audit.Log(s.db, "accessibility_profiles", profile.ID, keyID, auditAction)
 
-	return apiv1.PatchPlaceAccessibility200JSONResponse(input), nil
+	return apiv1.PatchPlaceAccessibility200JSONResponse(profile), nil
 }
 
 func (s *Server) handleHealthz(w http.ResponseWriter, r *http.Request) {

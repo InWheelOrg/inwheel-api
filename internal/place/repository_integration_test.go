@@ -13,6 +13,7 @@ import (
 	"log"
 	"os"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -249,20 +250,13 @@ func TestRepository_UpsertProfile_CreatesWhenAbsent(t *testing.T) {
 	repo := place.NewRepository(gormDB)
 	placeID := mustCreatePlace(ctx, t, gormDB, 1001, "Profile Test Place")
 
-	profile := &models.AccessibilityProfile{
-		Entrance: &models.EntranceProps{IsLevel: boolPtr(true)},
-	}
-	created, err := repo.UpsertProfile(ctx, placeID, profile)
+	patch := []byte(`{"entrance":{"is_level":true}}`)
+	got, created, err := repo.UpsertProfile(ctx, placeID, patch, nil)
 	if err != nil {
 		t.Fatalf("UpsertProfile: %v", err)
 	}
 	if !created {
 		t.Errorf("created = false, want true on first insert")
-	}
-
-	var got models.AccessibilityProfile
-	if err := gormDB.Where("place_id = ?", placeID).First(&got).Error; err != nil {
-		t.Fatalf("load profile: %v", err)
 	}
 	if got.Entrance == nil || got.Entrance.IsLevel == nil || !*got.Entrance.IsLevel {
 		t.Errorf("Entrance.IsLevel = %v, want true", got.Entrance)
@@ -280,27 +274,18 @@ func TestRepository_UpsertProfile_UpdatesWhenPresent(t *testing.T) {
 	repo := place.NewRepository(gormDB)
 	placeID := mustCreatePlace(ctx, t, gormDB, 1002, "Profile Update Place")
 
-	first := &models.AccessibilityProfile{Entrance: &models.EntranceProps{IsLevel: boolPtr(false)}}
-	created, err := repo.UpsertProfile(ctx, placeID, first)
-	if err != nil {
+	if _, created, err := repo.UpsertProfile(ctx, placeID, []byte(`{"entrance":{"is_level":false}}`), nil); err != nil {
 		t.Fatalf("first UpsertProfile: %v", err)
-	}
-	if !created {
+	} else if !created {
 		t.Errorf("created = false, want true on first insert")
 	}
 
-	second := &models.AccessibilityProfile{Entrance: &models.EntranceProps{IsLevel: boolPtr(true)}}
-	created, err = repo.UpsertProfile(ctx, placeID, second)
+	got, created, err := repo.UpsertProfile(ctx, placeID, []byte(`{"entrance":{"is_level":true}}`), nil)
 	if err != nil {
 		t.Fatalf("second UpsertProfile: %v", err)
 	}
 	if created {
 		t.Errorf("created = true, want false on update")
-	}
-
-	var got models.AccessibilityProfile
-	if err := gormDB.Where("place_id = ?", placeID).First(&got).Error; err != nil {
-		t.Fatalf("load profile: %v", err)
 	}
 	if got.Entrance == nil || got.Entrance.IsLevel == nil || !*got.Entrance.IsLevel {
 		t.Errorf("Entrance.IsLevel = %v, want true (updated)", got.Entrance)
@@ -312,32 +297,136 @@ func TestRepository_UpsertProfile_UpdatesWhenPresent(t *testing.T) {
 	}
 }
 
-func TestRepository_UpsertProfile_OverwritesUserVerified(t *testing.T) {
+func TestRepository_UpsertProfile_PrepareCallbackAppliesBeforePersist(t *testing.T) {
 	t.Cleanup(func() { truncate(t) })
 	ctx := context.Background()
 	gormDB := testDB
 
 	repo := place.NewRepository(gormDB)
-	placeID := mustCreatePlace(ctx, t, gormDB, 1003, "User Verified Overwrite Place")
+	placeID := mustCreatePlace(ctx, t, gormDB, 1003, "Prepare Callback Place")
 
-	if _, err := repo.UpsertProfile(ctx, placeID, &models.AccessibilityProfile{Entrance: &models.EntranceProps{IsLevel: boolPtr(true)}, UserVerified: true}); err != nil {
+	if _, _, err := repo.UpsertProfile(ctx, placeID, []byte(`{"entrance":{"is_level":true}}`), func(p *models.AccessibilityProfile) {
+		p.UserVerified = true
+	}); err != nil {
 		t.Fatalf("seed: %v", err)
 	}
 
-	override := &models.AccessibilityProfile{
-		Entrance:     &models.EntranceProps{IsLevel: boolPtr(false)},
-		UserVerified: false,
-	}
-	if _, err := repo.UpsertProfile(ctx, placeID, override); err != nil {
+	got, _, err := repo.UpsertProfile(ctx, placeID, []byte(`{"entrance":{"is_level":false}}`), func(p *models.AccessibilityProfile) {
+		p.UserVerified = false
+	})
+	if err != nil {
 		t.Fatalf("override UpsertProfile: %v", err)
 	}
+	if got.Entrance == nil || got.Entrance.IsLevel == nil || *got.Entrance.IsLevel {
+		t.Errorf("Entrance.IsLevel = %v, want false (overwritten)", got.Entrance)
+	}
+	if got.UserVerified {
+		t.Errorf("UserVerified = true, want false (prepare callback applied)")
+	}
+}
+
+func TestRepository_UpsertProfile_PartialSubmissionPreservesOtherComponents(t *testing.T) {
+	t.Cleanup(func() { truncate(t) })
+	ctx := context.Background()
+	gormDB := testDB
+
+	repo := place.NewRepository(gormDB)
+	placeID := mustCreatePlace(ctx, t, gormDB, 1004, "Full Profile Place")
+
+	first := []byte(`{"entrance":{"is_level":true},"restroom":{"is_accessible":true},"parking":{"has_disabled_spaces":true}}`)
+	if _, _, err := repo.UpsertProfile(ctx, placeID, first, nil); err != nil {
+		t.Fatalf("first UpsertProfile: %v", err)
+	}
+
+	entranceOnly := []byte(`{"entrance":{"is_level":false}}`)
+	got, _, err := repo.UpsertProfile(ctx, placeID, entranceOnly, nil)
+	if err != nil {
+		t.Fatalf("second UpsertProfile: %v", err)
+	}
+
+	if got.Entrance == nil || got.Entrance.IsLevel == nil || *got.Entrance.IsLevel {
+		t.Errorf("Entrance.IsLevel = %v, want false (updated)", got.Entrance)
+	}
+	if got.Restroom == nil || got.Restroom.IsAccessible == nil || !*got.Restroom.IsAccessible {
+		t.Errorf("Restroom = %v, want preserved (IsAccessible=true)", got.Restroom)
+	}
+	if got.Parking == nil || got.Parking.HasDisabledSpaces == nil || !*got.Parking.HasDisabledSpaces {
+		t.Errorf("Parking = %v, want preserved (HasDisabledSpaces=true)", got.Parking)
+	}
+}
+
+func TestRepository_UpsertProfile_ExplicitNullClearsComponent(t *testing.T) {
+	t.Cleanup(func() { truncate(t) })
+	ctx := context.Background()
+	gormDB := testDB
+
+	repo := place.NewRepository(gormDB)
+	placeID := mustCreatePlace(ctx, t, gormDB, 1005, "Explicit Null Place")
+
+	first := []byte(`{"entrance":{"is_level":true},"restroom":{"is_accessible":true}}`)
+	if _, _, err := repo.UpsertProfile(ctx, placeID, first, nil); err != nil {
+		t.Fatalf("first UpsertProfile: %v", err)
+	}
+
+	got, _, err := repo.UpsertProfile(ctx, placeID, []byte(`{"restroom":null}`), nil)
+	if err != nil {
+		t.Fatalf("second UpsertProfile: %v", err)
+	}
+	if got.Entrance == nil || got.Entrance.IsLevel == nil || !*got.Entrance.IsLevel {
+		t.Errorf("Entrance = %v, want preserved (IsLevel=true)", got.Entrance)
+	}
+	if got.Restroom != nil {
+		t.Errorf("Restroom = %v, want nil (explicitly cleared)", got.Restroom)
+	}
+}
+
+func TestRepository_UpsertProfile_InvalidPatchReturnsErrInvalidPatch(t *testing.T) {
+	t.Cleanup(func() { truncate(t) })
+	ctx := context.Background()
+	gormDB := testDB
+
+	repo := place.NewRepository(gormDB)
+	placeID := mustCreatePlace(ctx, t, gormDB, 1006, "Invalid Patch Place")
+
+	_, _, err := repo.UpsertProfile(ctx, placeID, []byte(`not json`), nil)
+	if !errors.Is(err, place.ErrInvalidPatch) {
+		t.Errorf("err = %v, want ErrInvalidPatch", err)
+	}
+}
+
+func TestRepository_UpsertProfile_ConcurrentPatchesBothSurvive(t *testing.T) {
+	t.Cleanup(func() { truncate(t) })
+	ctx := context.Background()
+	gormDB := testDB
+
+	repo := place.NewRepository(gormDB)
+	placeID := mustCreatePlace(ctx, t, gormDB, 1007, "Concurrent Patch Place")
+
+	var wg sync.WaitGroup
+	wg.Add(2)
+	go func() {
+		defer wg.Done()
+		if _, _, err := repo.UpsertProfile(ctx, placeID, []byte(`{"entrance":{"is_level":true}}`), nil); err != nil {
+			t.Errorf("entrance patch: %v", err)
+		}
+	}()
+	go func() {
+		defer wg.Done()
+		if _, _, err := repo.UpsertProfile(ctx, placeID, []byte(`{"restroom":{"is_accessible":true}}`), nil); err != nil {
+			t.Errorf("restroom patch: %v", err)
+		}
+	}()
+	wg.Wait()
 
 	var got models.AccessibilityProfile
 	if err := gormDB.Where("place_id = ?", placeID).First(&got).Error; err != nil {
 		t.Fatalf("load profile: %v", err)
 	}
-	if got.Entrance == nil || got.Entrance.IsLevel == nil || *got.Entrance.IsLevel {
-		t.Errorf("Entrance.IsLevel = %v, want false (overwritten)", got.Entrance)
+	if got.Entrance == nil || got.Entrance.IsLevel == nil || !*got.Entrance.IsLevel {
+		t.Errorf("Entrance = %v, want survived concurrent patch (IsLevel=true)", got.Entrance)
+	}
+	if got.Restroom == nil || got.Restroom.IsAccessible == nil || !*got.Restroom.IsAccessible {
+		t.Errorf("Restroom = %v, want survived concurrent patch (IsAccessible=true)", got.Restroom)
 	}
 }
 
@@ -347,7 +436,7 @@ func TestRepository_UpsertProfile_PlaceNotFound(t *testing.T) {
 	db := testDB
 
 	repo := place.NewRepository(db)
-	_, err := repo.UpsertProfile(ctx, "00000000-0000-0000-0000-000000000000", &models.AccessibilityProfile{})
+	_, _, err := repo.UpsertProfile(ctx, "00000000-0000-0000-0000-000000000000", []byte(`{}`), nil)
 	if !errors.Is(err, place.ErrPlaceNotFound) {
 		t.Errorf("err = %v, want ErrPlaceNotFound", err)
 	}
@@ -405,7 +494,9 @@ func TestRepository_UpsertProfileIngestion_SkipsUserVerified(t *testing.T) {
 	repo := place.NewRepository(db)
 	placeID := mustCreatePlace(ctx, t, db, 9006, "Café Pascal Ingestion3")
 
-	if _, err := repo.UpsertProfile(ctx, placeID, &models.AccessibilityProfile{Entrance: &models.EntranceProps{IsLevel: boolPtr(true)}, UserVerified: true}); err != nil {
+	if _, _, err := repo.UpsertProfile(ctx, placeID, []byte(`{"entrance":{"is_level":true}}`), func(p *models.AccessibilityProfile) {
+		p.UserVerified = true
+	}); err != nil {
 		t.Fatalf("seed: %v", err)
 	}
 	written, err := repo.UpsertProfileIngestion(ctx, placeID, &models.AccessibilityProfile{Entrance: &models.EntranceProps{IsLevel: boolPtr(false)}})
