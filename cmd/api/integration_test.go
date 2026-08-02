@@ -20,10 +20,12 @@ import (
 	"time"
 
 	"github.com/InWheelOrg/inwheel-api/internal/a11y"
+	apiv1 "github.com/InWheelOrg/inwheel-api/internal/api/v1"
 	"github.com/InWheelOrg/inwheel-api/internal/middleware"
 	"github.com/InWheelOrg/inwheel-api/internal/place"
 	"github.com/InWheelOrg/inwheel-api/internal/testhelpers"
 	"github.com/InWheelOrg/inwheel-api/pkg/models"
+	"github.com/google/uuid"
 	"golang.org/x/time/rate"
 	"gopkg.in/yaml.v3"
 	"gorm.io/gorm"
@@ -188,6 +190,43 @@ func TestHandlePatchAccessibility_PlaceNotFound(t *testing.T) {
 	}
 }
 
+func TestHandlePatchAccessibility_InvalidPatchReturnsPopulatedFields(t *testing.T) {
+	t.Cleanup(func() { truncate(t) })
+
+	place := models.Place{Name: "Test Place", Lat: 52.5, Lng: 13.4, Category: models.CategoryCafe, Rank: models.RankEstablishment, Source: "test"}
+	testDB.Create(&place)
+
+	srv := newTestServer(t)
+	id, err := uuid.Parse(place.ID)
+	if err != nil {
+		t.Fatalf("parse place id: %v", err)
+	}
+
+	r := httptest.NewRequest(http.MethodPatch, "/v1/places/"+place.ID+"/accessibility", strings.NewReader(`not json`))
+	ctx := context.WithValue(r.Context(), ctxKeyRawBody{}, []byte(`not json`))
+	r = r.WithContext(ctx)
+	ctx = context.WithValue(r.Context(), ctxKeyRequest{}, r)
+
+	resp, err := srv.PatchPlaceAccessibility(ctx, apiv1.PatchPlaceAccessibilityRequestObject{
+		Id:   id,
+		Body: &models.AccessibilityProfile{},
+	})
+	if err != nil {
+		t.Fatalf("PatchPlaceAccessibility: %v", err)
+	}
+
+	got, ok := resp.(apiv1.PatchPlaceAccessibility400JSONResponse)
+	if !ok {
+		t.Fatalf("response = %T, want PatchPlaceAccessibility400JSONResponse", resp)
+	}
+	if got.Fields == nil {
+		t.Error("Fields is nil, want a populated (non-null) slice per the ValidationError schema")
+	}
+	if len(got.Fields) == 0 {
+		t.Error("Fields is empty, want at least one entry describing the invalid patch")
+	}
+}
+
 func TestHandlePatchAccessibility_CreatePath(t *testing.T) {
 	t.Cleanup(func() { truncate(t) })
 
@@ -254,6 +293,92 @@ func TestHandlePatchAccessibility_UpdatesExistingProfile(t *testing.T) {
 
 	if profile.Entrance == nil || profile.Entrance.IsLevel == nil || *profile.Entrance.IsLevel {
 		t.Error("expected Entrance.IsLevel=false after update")
+	}
+}
+
+func TestHandlePatchAccessibility_PartialSubmissionPreservesOtherComponents(t *testing.T) {
+	t.Cleanup(func() { truncate(t) })
+
+	place := models.Place{
+		Name:     "Test Place",
+		Lat:      52.5,
+		Lng:      13.4,
+		Category: models.CategoryCafe,
+		Rank:     models.RankEstablishment,
+		Source:   "test",
+		Accessibility: &models.AccessibilityProfile{
+			Entrance: &models.EntranceProps{IsLevel: boolPtr(true)},
+			Restroom: &models.RestroomProps{IsAccessible: boolPtr(true)},
+			Parking:  &models.ParkingProps{HasDisabledSpaces: boolPtr(true)},
+		},
+	}
+	testDB.Create(&place)
+
+	body, _ := json.Marshal(models.AccessibilityProfile{
+		Entrance: &models.EntranceProps{IsLevel: boolPtr(false)},
+	})
+
+	r := httptest.NewRequest(http.MethodPatch, "/v1/places/"+place.ID+"/accessibility", bytes.NewReader(body))
+	r.Header.Set("Content-Type", "application/json")
+	r.SetPathValue("id", place.ID)
+	w := httptest.NewRecorder()
+	handlerNoAuth(t, newTestServer(t)).ServeHTTP(w, r)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200; body: %s", w.Code, w.Body.String())
+	}
+
+	var profile models.AccessibilityProfile
+	testDB.Where("place_id = ?", place.ID).First(&profile)
+
+	if profile.Entrance == nil || profile.Entrance.IsLevel == nil || *profile.Entrance.IsLevel {
+		t.Errorf("Entrance.IsLevel = %v, want false (updated)", profile.Entrance)
+	}
+	if profile.Restroom == nil || profile.Restroom.IsAccessible == nil || !*profile.Restroom.IsAccessible {
+		t.Errorf("Restroom = %v, want preserved (IsAccessible=true)", profile.Restroom)
+	}
+	if profile.Parking == nil || profile.Parking.HasDisabledSpaces == nil || !*profile.Parking.HasDisabledSpaces {
+		t.Errorf("Parking = %v, want preserved (HasDisabledSpaces=true)", profile.Parking)
+	}
+}
+
+func TestHandlePatchAccessibility_ExplicitNullClearsComponent(t *testing.T) {
+	t.Cleanup(func() { truncate(t) })
+
+	place := models.Place{
+		Name:     "Test Place",
+		Lat:      52.5,
+		Lng:      13.4,
+		Category: models.CategoryCafe,
+		Rank:     models.RankEstablishment,
+		Source:   "test",
+		Accessibility: &models.AccessibilityProfile{
+			Entrance: &models.EntranceProps{IsLevel: boolPtr(true)},
+			Restroom: &models.RestroomProps{IsAccessible: boolPtr(true)},
+		},
+	}
+	testDB.Create(&place)
+
+	body := []byte(`{"restroom":null}`)
+
+	r := httptest.NewRequest(http.MethodPatch, "/v1/places/"+place.ID+"/accessibility", bytes.NewReader(body))
+	r.Header.Set("Content-Type", "application/json")
+	r.SetPathValue("id", place.ID)
+	w := httptest.NewRecorder()
+	handlerNoAuth(t, newTestServer(t)).ServeHTTP(w, r)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200; body: %s", w.Code, w.Body.String())
+	}
+
+	var profile models.AccessibilityProfile
+	testDB.Where("place_id = ?", place.ID).First(&profile)
+
+	if profile.Entrance == nil || profile.Entrance.IsLevel == nil || !*profile.Entrance.IsLevel {
+		t.Errorf("Entrance = %v, want preserved (IsLevel=true)", profile.Entrance)
+	}
+	if profile.Restroom != nil {
+		t.Errorf("Restroom = %v, want nil (explicitly cleared)", profile.Restroom)
 	}
 }
 

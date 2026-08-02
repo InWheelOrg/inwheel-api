@@ -107,6 +107,53 @@ func TestPlace_Tags(t *testing.T) {
 	})
 }
 
+// ── AccessibilityProfile ─────────────────────────────────────────────────────
+
+func TestAccessibilityProfile_Nil(t *testing.T) {
+	t.Parallel()
+	if errs := AccessibilityProfile(nil); len(errs) != 0 {
+		t.Errorf("AccessibilityProfile(nil) = %+v, want no errors", errs)
+	}
+}
+
+func TestAccessibilityProfile_Valid(t *testing.T) {
+	t.Parallel()
+	p := &models.AccessibilityProfile{
+		SourceReports: models.SourceReports{{Source: "osm", Value: "yes"}},
+	}
+	if errs := AccessibilityProfile(p); len(errs) != 0 {
+		t.Errorf("expected no errors, got %+v", errs)
+	}
+}
+
+func TestAccessibilityProfile_SourceReports(t *testing.T) {
+	t.Parallel()
+	t.Run("too many entries", func(t *testing.T) {
+		p := &models.AccessibilityProfile{
+			SourceReports: make(models.SourceReports, maxSourceReportEntries+1),
+		}
+		if !errorsHaveField(AccessibilityProfile(p), "source_reports") {
+			t.Error("expected error on source_reports")
+		}
+	})
+	t.Run("oversized source", func(t *testing.T) {
+		p := &models.AccessibilityProfile{
+			SourceReports: models.SourceReports{{Source: strings.Repeat("s", maxSourceLength+1), Value: "yes"}},
+		}
+		if !errorsHaveField(AccessibilityProfile(p), "source_reports") {
+			t.Error("expected error on source_reports")
+		}
+	})
+	t.Run("oversized value", func(t *testing.T) {
+		p := &models.AccessibilityProfile{
+			SourceReports: models.SourceReports{{Source: "osm", Value: strings.Repeat("v", maxSourceLength+1)}},
+		}
+		if !errorsHaveField(AccessibilityProfile(p), "source_reports") {
+			t.Error("expected error on source_reports")
+		}
+	})
+}
+
 // ── PlacesQuery ───────────────────────────────────────────────────────────────
 
 // Mutual exclusivity and group completeness — these cannot be expressed in the

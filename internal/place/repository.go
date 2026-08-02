@@ -12,6 +12,8 @@ import (
 	"fmt"
 	"time"
 
+	jsonpatch "github.com/evanphx/json-patch/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
 
@@ -20,6 +22,14 @@ import (
 )
 
 var ErrPlaceNotFound = errors.New("place not found")
+var ErrInvalidPatch = errors.New("invalid merge patch")
+
+const pgUniqueViolation = "23505"
+
+func isUniqueViolation(err error) bool {
+	var pgErr *pgconn.PgError
+	return errors.As(err, &pgErr) && pgErr.Code == pgUniqueViolation
+}
 
 type Repository struct {
 	db *gorm.DB
@@ -112,12 +122,19 @@ func (r *Repository) AttachExternalRef(
 	return nil
 }
 
-// UpsertProfile creates or replaces the accessibility profile. Always overwrites.
-// Returns created=true when a new row was inserted, false on update.
-func (r *Repository) UpsertProfile(ctx context.Context, placeID string, profile *models.AccessibilityProfile) (created bool, err error) {
-	if profile == nil {
-		return false, fmt.Errorf("upsert profile: nil profile")
+type PreparePatch func(*models.AccessibilityProfile)
+
+func (r *Repository) UpsertProfile(ctx context.Context, placeID string, rawPatch []byte, prepare PreparePatch) (result models.AccessibilityProfile, created bool, err error) {
+	for attempt := 0; attempt < 2; attempt++ {
+		result, created, err = r.upsertProfileAttempt(ctx, placeID, rawPatch, prepare)
+		if err == nil || !isUniqueViolation(err) {
+			return result, created, err
+		}
 	}
+	return result, created, err
+}
+
+func (r *Repository) upsertProfileAttempt(ctx context.Context, placeID string, rawPatch []byte, prepare PreparePatch) (result models.AccessibilityProfile, created bool, err error) {
 	now := time.Now()
 	err = r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 		if err := tx.First(&models.Place{}, "id = ?", placeID).Error; err != nil {
@@ -126,36 +143,65 @@ func (r *Repository) UpsertProfile(ctx context.Context, placeID string, profile 
 			}
 			return fmt.Errorf("upsert profile: check place: %w", err)
 		}
+
 		var existing models.AccessibilityProfile
-		loadErr := tx.Where("place_id = ?", placeID).First(&existing).Error
+		loadErr := tx.Clauses(clause.Locking{Strength: "UPDATE"}).Where("place_id = ?", placeID).First(&existing).Error
 		if loadErr != nil && !errors.Is(loadErr, gorm.ErrRecordNotFound) {
 			return fmt.Errorf("upsert profile: load existing: %w", loadErr)
 		}
-		if errors.Is(loadErr, gorm.ErrRecordNotFound) {
-			profile.PlaceID = placeID
-			profile.UpdatedAt = now
+		exists := !errors.Is(loadErr, gorm.ErrRecordNotFound)
+
+		existingJSON := []byte("{}")
+		if exists {
+			b, marshalErr := json.Marshal(existing)
+			if marshalErr != nil {
+				return fmt.Errorf("upsert profile: marshal existing: %w", marshalErr)
+			}
+			existingJSON = b
+		}
+		mergedJSON, mergeErr := jsonpatch.MergePatch(existingJSON, rawPatch)
+		if mergeErr != nil {
+			return fmt.Errorf("%w: %v", ErrInvalidPatch, mergeErr)
+		}
+		var merged models.AccessibilityProfile
+		if err := json.Unmarshal(mergedJSON, &merged); err != nil {
+			return fmt.Errorf("upsert profile: unmarshal merged: %w", err)
+		}
+
+		if prepare != nil {
+			prepare(&merged)
+		}
+		merged.UpdatedAt = now
+
+		if !exists {
+			merged.PlaceID = placeID
 			created = true
-			return tx.Create(profile).Error
+			if err := tx.Create(&merged).Error; err != nil {
+				return err
+			}
+			result = merged
+			return nil
 		}
+
 		updates := map[string]any{
-			"source_reports": profile.SourceReports,
-			"entrance":       profile.Entrance,
-			"pathways":       profile.Pathways,
-			"restroom":       profile.Restroom,
-			"parking":        profile.Parking,
-			"elevator":       profile.Elevator,
+			"source_reports": merged.SourceReports,
+			"entrance":       merged.Entrance,
+			"pathways":       merged.Pathways,
+			"restroom":       merged.Restroom,
+			"parking":        merged.Parking,
+			"elevator":       merged.Elevator,
 			"updated_at":     now,
-			"submitted_by":   profile.SubmittedBy,
-			"submitted_at":   profile.SubmittedAt,
-			"user_verified":  profile.UserVerified,
+			"submitted_by":   merged.SubmittedBy,
+			"submitted_at":   merged.SubmittedAt,
+			"user_verified":  merged.UserVerified,
 		}
-		if err := tx.Model(&existing).Clauses(clause.Returning{}).Updates(updates).Error; err != nil {
+		if err := tx.Model(&existing).Updates(updates).Error; err != nil {
 			return err
 		}
-		*profile = existing
+		result = merged
 		return nil
 	})
-	return created, err
+	return result, created, err
 }
 
 // UpsertProfileIngestion creates or updates the accessibility profile but skips

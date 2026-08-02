@@ -271,15 +271,25 @@ components:
           items:
             $ref: "#/components/schemas/SourceReport"
         entrance:
-          $ref: "#/components/schemas/EntranceProps"
+          nullable: true
+          allOf:
+            - $ref: "#/components/schemas/EntranceProps"
         pathways:
-          $ref: "#/components/schemas/PathwayProps"
+          nullable: true
+          allOf:
+            - $ref: "#/components/schemas/PathwayProps"
         restroom:
-          $ref: "#/components/schemas/RestroomProps"
+          nullable: true
+          allOf:
+            - $ref: "#/components/schemas/RestroomProps"
         parking:
-          $ref: "#/components/schemas/ParkingProps"
+          nullable: true
+          allOf:
+            - $ref: "#/components/schemas/ParkingProps"
         elevator:
-          $ref: "#/components/schemas/ElevatorProps"
+          nullable: true
+          allOf:
+            - $ref: "#/components/schemas/ElevatorProps"
         updated_at:
           type: string
           format: date-time

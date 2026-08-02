@@ -43,7 +43,7 @@ func handlerForServer(t *testing.T, srv *Server) http.Handler {
 		BaseURL:          "/v1",
 		BaseRouter:       v1Mux,
 		ErrorHandlerFunc: srv.validationErrorHandler,
-		Middlewares:      []apiv1.MiddlewareFunc{bodySizeLimiter(1 << 20)},
+		Middlewares:      []apiv1.MiddlewareFunc{captureRawBody, bodySizeLimiter(1 << 20)},
 	})
 
 	v1Handler := nethttp_middleware.OapiRequestValidatorWithOptions(swagger, &nethttp_middleware.Options{
@@ -85,7 +85,7 @@ func handlerNoAuth(t *testing.T, srv *Server) http.Handler {
 		BaseURL:          "/v1",
 		BaseRouter:       v1Mux,
 		ErrorHandlerFunc: srv.validationErrorHandler,
-		Middlewares:      []apiv1.MiddlewareFunc{bodySizeLimiter(1 << 20)},
+		Middlewares:      []apiv1.MiddlewareFunc{captureRawBody, bodySizeLimiter(1 << 20)},
 	})
 
 	v1Handler := nethttp_middleware.OapiRequestValidatorWithOptions(swagger, &nethttp_middleware.Options{

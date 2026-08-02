@@ -31,8 +31,8 @@ flowchart LR
 | `UpsertBatch(ctx, places)` | the ingestion batcher | Bulk insert/update on `(osm_id, osm_type)` conflict. Uses `RETURNING id` so GORM back-populates the `ID` field on every place in the slice — the batcher harvests these as `touchedIDs` for the retry sweep. |
 | `AttachExternalRef(ctx, placeID, source, ref)` | `identity.Resolver`, `identity.Sweeper` | Adds an `ExternalRef` to the place's `external_ids` JSONB map under the given source key, via Postgres `jsonb_set`. Concurrent attaches to different sources on the same place don't clobber each other. |
 | `FindCandidates(ctx, lat, lng, radiusM, categories)` | `identity.Match` | Active places within `radiusM` of the point whose category is in `categories`. Uses `ST_DWithin` over a `geography(ST_Point(lng, lat))` expression. Backed by a PostGIS GIST index. |
-| `UpsertProfile(ctx, placeID, profile)` | `cmd/api` (`PatchPlaceAccessibility`) | Create-or-update the accessibility profile for a place. Always overwrites — user-driven write path. Returns `created=true` when a new row was inserted. |
-| `UpsertProfileIngestion(ctx, placeID, profile)` | ingestion batcher | Same as `UpsertProfile` but skips the write when `user_verified=true`, preserving human corrections across automated re-ingests. |
+| `UpsertProfile(ctx, placeID, rawPatch, prepare)` | `cmd/api` (`PatchPlaceAccessibility`) | Create-or-update the accessibility profile for a place by applying `rawPatch` as an RFC 7396 JSON Merge Patch on top of the current row — omitted components are left untouched, explicit `null` clears them. Reads the current row `FOR UPDATE` and merges/writes inside one transaction, so concurrent PATCHes for the same place serialize instead of one clobbering the other. `prepare` runs on the merged profile before persisting (audit flags, `submitted_by`/`submitted_at`). Returns `created=true` when a new row was inserted. |
+| `UpsertProfileIngestion(ctx, placeID, profile)` | ingestion batcher | Full replace with the given profile (no merge), skipping the write when `user_verified=true` to preserve human corrections across automated re-ingests. |
 
 ## Compile-time contracts
 
