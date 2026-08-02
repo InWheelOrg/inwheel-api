@@ -112,6 +112,7 @@ func main() {
 	}
 
 	mux := http.NewServeMux()
+	mux.HandleFunc("GET /{$}", srv.handleDocs)
 	mux.HandleFunc("GET /healthz", srv.handleHealthz)
 	mux.HandleFunc("GET /readyz", srv.handleReadyz)
 	mux.HandleFunc("GET /openapi.yaml", srv.handleOpenAPISpec)
@@ -373,6 +374,29 @@ func (s *Server) handleOpenAPISpec(w http.ResponseWriter, r *http.Request) {
 		slog.Error("handleOpenAPISpec: write failed", "error", err)
 	}
 }
+
+func (s *Server) handleDocs(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "text/html")
+	if _, err := w.Write([]byte(scalarHTML)); err != nil {
+		slog.Error("handleDocs: write failed", "error", err)
+	}
+}
+
+const scalarHTML = `<!doctype html>
+<html>
+<head>
+	<title>InWheel API Reference</title>
+	<meta charset="utf-8" />
+	<meta name="viewport" content="width=device-width, initial-scale=1" />
+</head>
+<body>
+	<div id="app"></div>
+	<script src="https://cdn.jsdelivr.net/npm/@scalar/api-reference@1.64.0"></script>
+	<script>
+		Scalar.createApiReference('#app', { url: '/openapi.yaml' })
+	</script>
+</body>
+</html>`
 
 func validationError(errs []validation.FieldError) apiv1.ValidationError {
 	fields := make([]apiv1.FieldError, len(errs))

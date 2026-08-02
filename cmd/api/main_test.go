@@ -10,6 +10,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
@@ -215,6 +216,43 @@ func TestHandleHealthz(t *testing.T) {
 	}
 	if w.Body.String() != `{"status":"ok"}`+"\n" {
 		t.Errorf("body = %q", w.Body.String())
+	}
+}
+
+func TestHandleDocs(t *testing.T) {
+	r := httptest.NewRequest(http.MethodGet, "/", nil)
+	w := httptest.NewRecorder()
+	(&Server{}).handleDocs(w, r)
+
+	if w.Code != http.StatusOK {
+		t.Errorf("status = %d, want 200", w.Code)
+	}
+	if ct := w.Header().Get("Content-Type"); ct != "text/html" {
+		t.Errorf("Content-Type = %q, want text/html", ct)
+	}
+	body := w.Body.String()
+	if !strings.Contains(body, "/openapi.yaml") {
+		t.Errorf("body missing spec URL reference: %s", body)
+	}
+}
+
+func TestRootRoute_ExactMatchOnly(t *testing.T) {
+	srv := &Server{}
+	mux := http.NewServeMux()
+	mux.HandleFunc("GET /{$}", srv.handleDocs)
+
+	r := httptest.NewRequest(http.MethodGet, "/", nil)
+	w := httptest.NewRecorder()
+	mux.ServeHTTP(w, r)
+	if w.Code != http.StatusOK {
+		t.Errorf("GET / status = %d, want 200", w.Code)
+	}
+
+	r = httptest.NewRequest(http.MethodGet, "/does-not-exist", nil)
+	w = httptest.NewRecorder()
+	mux.ServeHTTP(w, r)
+	if w.Code != http.StatusNotFound {
+		t.Errorf("GET /does-not-exist status = %d, want 404 (root pattern must not catch unmatched paths)", w.Code)
 	}
 }
 
