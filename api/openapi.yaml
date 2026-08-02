@@ -34,10 +34,19 @@ components:
 
     AccessibilityLevel:
       type: string
+      description: |
+        Traffic-light rating for a measurement field, submitted directly rather
+        than measured. `good` and `limited` bands, and the `no` cutoff, are
+        defined per-field against SIA 500 or ADA and documented on that field.
       enum: [good, limited, no]
 
     Category:
       type: string
+      description: |
+        Broad place type used for filtering and icon selection.
+        `entrance` and `toilet` denote standalone accessibility-relevant
+        features rather than full venues; `other` is the ingestion fallback
+        for buildings that don't fit a more specific category.
       enum:
         - mall
         - airport
@@ -52,10 +61,15 @@ components:
 
     OSMType:
       type: string
+      description: OpenStreetMap element type this place was ingested from.
       enum: [node, way, relation]
 
     PlaceStatus:
       type: string
+      description: |
+        Lifecycle state of an OSM-sourced place. `osm_removed` means the
+        backing OSM element was deleted upstream but the place record is
+        kept to preserve any user-submitted accessibility data.
       enum: [active, closed, osm_removed]
 
     # ── Domain types — reuse existing Go structs via x-go-type ───────────────
@@ -72,7 +86,9 @@ components:
         type:
           $ref: "#/components/schemas/DoorType"
         width:
-          $ref: "#/components/schemas/AccessibilityLevel"
+          allOf:
+            - $ref: "#/components/schemas/AccessibilityLevel"
+          description: "Clear opening width. good >=0.80m, limited 0.70-0.80m, no <0.70m (SIA 500)."
 
     EntranceProps:
       x-go-type: models.EntranceProps
@@ -88,9 +104,13 @@ components:
         has_removable_ramp:
           type: boolean
         slope_percent:
-          $ref: "#/components/schemas/AccessibilityLevel"
+          allOf:
+            - $ref: "#/components/schemas/AccessibilityLevel"
+          description: "Ramp slope. good <=6%, limited 6-8.33%, no >8.33% (ADA)."
         width:
-          $ref: "#/components/schemas/AccessibilityLevel"
+          allOf:
+            - $ref: "#/components/schemas/AccessibilityLevel"
+          description: "Clear opening width. good >=0.80m, limited 0.70-0.80m, no <0.70m (SIA 500)."
         door:
           $ref: "#/components/schemas/DoorProps"
         has_intercom:
@@ -109,7 +129,9 @@ components:
       type: object
       properties:
         width:
-          $ref: "#/components/schemas/AccessibilityLevel"
+          allOf:
+            - $ref: "#/components/schemas/AccessibilityLevel"
+          description: "Narrowest passage width. good >=0.90m, limited 0.80-0.90m, no <0.80m (ADA)."
         surface:
           $ref: "#/components/schemas/SurfaceType"
         is_kerbstone_free:
@@ -132,15 +154,21 @@ components:
         is_accessible:
           type: boolean
         door_width:
-          $ref: "#/components/schemas/AccessibilityLevel"
+          allOf:
+            - $ref: "#/components/schemas/AccessibilityLevel"
+          description: "Clear opening width. good >=0.80m, limited 0.70-0.80m, no <0.70m (SIA 500)."
         turning_radius:
-          $ref: "#/components/schemas/AccessibilityLevel"
+          allOf:
+            - $ref: "#/components/schemas/AccessibilityLevel"
+          description: "good >=1.50m, limited 1.20-1.50m, no <1.20m (ADA)."
         has_grab_rails:
           type: boolean
         has_roll_in_shower:
           type: boolean
         toilet_seat_height:
-          $ref: "#/components/schemas/AccessibilityLevel"
+          allOf:
+            - $ref: "#/components/schemas/AccessibilityLevel"
+          description: "good 0.43-0.48m, limited 0.40-0.43m or 0.48-0.50m, no outside that (ADA)."
         has_emergency_pull:
           type: boolean
         has_changing_table:
@@ -165,9 +193,13 @@ components:
           minimum: 0
           maximum: 10000
         distance_to_entrance:
-          $ref: "#/components/schemas/AccessibilityLevel"
+          allOf:
+            - $ref: "#/components/schemas/AccessibilityLevel"
+          description: "good <=25m, limited 25-50m, no >50m (ADA specifies no maximum; nearest available figure used)."
         width:
-          $ref: "#/components/schemas/AccessibilityLevel"
+          allOf:
+            - $ref: "#/components/schemas/AccessibilityLevel"
+          description: "Parking space width. good >=2.40m, limited 2.00-2.40m, no <2.00m (ADA)."
         has_dedicated_signage:
           type: boolean
         audit_flags:
@@ -184,11 +216,17 @@ components:
       type: object
       properties:
         width:
-          $ref: "#/components/schemas/AccessibilityLevel"
+          allOf:
+            - $ref: "#/components/schemas/AccessibilityLevel"
+          description: "Cabin width. good >=1.70m, limited 1.50-1.70m, no <1.50m (ADA)."
         depth:
-          $ref: "#/components/schemas/AccessibilityLevel"
+          allOf:
+            - $ref: "#/components/schemas/AccessibilityLevel"
+          description: "Cabin depth. good >=1.30m, limited 1.10-1.30m, no <1.10m (ADA)."
         door_width:
-          $ref: "#/components/schemas/AccessibilityLevel"
+          allOf:
+            - $ref: "#/components/schemas/AccessibilityLevel"
+          description: "good >=0.90m, limited 0.80-0.90m, no <0.80m (ADA)."
         has_braille:
           type: boolean
         has_audio:
@@ -309,6 +347,11 @@ components:
           $ref: "#/components/schemas/Category"
         rank:
           type: integer
+          description: |
+            Display priority for map clients. 1 = landmark (shown at world
+            zoom, e.g. airports, hospitals), 2 = establishment (standard
+            commercial/public building), 3 = feature (minor utility, e.g.
+            public toilets, ATMs — shown only at high zoom).
           enum: [1, 2, 3]
         parent_id:
           type: string
@@ -341,6 +384,21 @@ components:
           type: string
           format: date-time
           readOnly: true
+      example:
+        id: "3fa85f64-5717-4562-b3fc-2c963f66afa6"
+        osm_id: 123456789
+        osm_type: "node"
+        name: "Gare de Vevey"
+        lng: 6.8422
+        lat: 46.4632
+        category: "train_station"
+        rank: 1
+        status: "active"
+        accessibility:
+          entrance:
+            is_level: true
+            width: "good"
+            audit_flags: []
 
     # ── API-specific response envelopes ───────────────────────────────────────
 
@@ -447,6 +505,7 @@ paths:
             maxLength: 256
         - name: lng
           in: query
+          example: 6.8422
           schema:
             type: number
             format: double
@@ -454,6 +513,7 @@ paths:
             maximum: 180
         - name: lat
           in: query
+          example: 46.4632
           schema:
             type: number
             format: double
@@ -461,6 +521,7 @@ paths:
             maximum: 90
         - name: radius
           in: query
+          example: 500
           schema:
             type: number
             format: double
