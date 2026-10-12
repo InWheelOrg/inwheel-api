@@ -7,7 +7,9 @@ on:
 
 jobs:
   claude-review:
-    if: github.actor != 'dependabot[bot]' && github.event.pull_request.draft == false
+    if: >
+      github.event.pull_request.draft == false &&
+      github.event.pull_request.user.login != 'dependabot[bot]'
     runs-on: ubuntu-latest
     timeout-minutes: 15
     permissions:
@@ -15,7 +17,6 @@ jobs:
       pull-requests: write
       issues: read
       id-token: write
-      statuses: write
 
     steps:
       - name: Checkout repository
@@ -32,17 +33,25 @@ jobs:
           prompt: |
             REPO: ${{ github.repository }}
             PR NUMBER: ${{ github.event.pull_request.number }}
-            HEAD SHA: ${{ github.event.pull_request.head.sha }}
 
-            Read REVIEW.md for review instructions, then read CLAUDE.md for project context,
-            then review this pull request and follow the instructions in REVIEW.md exactly.
+            Read CLAUDE.md, then review this PR for must-fix issues only:
+            - Bugs or logic errors, panics on untrusted input, PII in logs, missing auth on write endpoints
+            - SQL / GORM queries built by concatenating user input instead of parameterised placeholders
+            - Accessibility "scoring" or "decision" logic in handlers or services: the API is a pure data layer
+            - `AuditFlags` written from client input or computed non-deterministically (clock, random, network)
+            - Write endpoints not running validation -> a11y engine -> persist in that order; `DetectConflicts`
+              errors must return 422, structural validation failures 400 with a field-level error list
+            - JSONB custom types (`Geometry`, `PlaceTags`, component `Properties`) missing a symmetric
+              `driver.Valuer` / `sql.Scanner` pair
+            - Introduction of an HTTP framework (gin, chi, echo, fiber); handlers use stdlib `net/http`
+            - New exported functions, handlers, repositories, or `internal/sources` implementations without
+              tests for each meaningful branch, unless trivial pass-throughs
 
-            After posting your review, set a commit status on HEAD SHA:
-              gh api repos/${{ github.repository }}/statuses/${{ github.event.pull_request.head.sha }} \
-                -f state=<success|failure> \
-                -f context="claude-code-review" \
-                -f description="<one line summary>"
-            Use state=failure if you posted any Important findings, state=success otherwise.
+            Skip anything CI already enforces (go vet, golangci-lint, generated code, govulncheck, Trivy)
+            and skip style, subjective, or hypothetical feedback.
+
+            Post inline comments for must-fix issues, then one top-level summary — explicitly say "looks good"
+            if there are none. Don't manufacture issues to appear thorough.
           claude_args: |
             --max-turns 40
-            --allowedTools "mcp__github_inline_comment__create_inline_comment,Bash(gh pr comment:*),Bash(gh pr diff:*),Bash(gh pr view:*),Bash(gh api *),Read,Grep,Glob"
+            --allowedTools "mcp__github_inline_comment__create_inline_comment,Bash(gh pr comment:*),Bash(gh pr diff:*),Bash(gh pr view:*),Read,Grep,Glob"
