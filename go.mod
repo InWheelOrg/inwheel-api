@@ -4,7 +4,7 @@ go 1.26.4
 
 require (
 	github.com/evanphx/json-patch/v5 v5.9.11
-	github.com/getkin/kin-openapi v0.149.0
+	github.com/getkin/kin-openapi v0.151.0
 	github.com/golang-migrate/migrate/v4 v4.20.1
 	github.com/google/uuid v1.6.0
 	github.com/jackc/pgx/v5 v5.11.0
