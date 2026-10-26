@@ -4,12 +4,12 @@ go 1.26.4
 
 require (
 	github.com/evanphx/json-patch/v5 v5.9.11
-	github.com/getkin/kin-openapi v0.151.0
+	github.com/getkin/kin-openapi v0.152.0
 	github.com/golang-migrate/migrate/v4 v4.20.1
 	github.com/google/uuid v1.6.0
 	github.com/jackc/pgx/v5 v5.11.0
-	github.com/oapi-codegen/nethttp-middleware v1.2.0
-	github.com/oapi-codegen/runtime v1.7.0
+	github.com/oapi-codegen/nethttp-middleware v1.3.1
+	github.com/oapi-codegen/runtime v1.8.0
 	github.com/paulmach/orb v0.13.0
 	github.com/paulmach/osm v0.9.0
 	github.com/testcontainers/testcontainers-go v0.44.0
